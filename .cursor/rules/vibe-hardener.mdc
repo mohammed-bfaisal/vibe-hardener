@@ -1,0 +1,71 @@
+---
+description: vibe-hardener engineering standards — apply to all files in this project
+globs: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx", "**/*.py", "**/*.go", "**/*.rs"]
+alwaysApply: true
+---
+
+# vibe-hardener Standards (Cursor)
+
+Apply these rules to every piece of code you write or modify in this project.
+
+## Non-Negotiables
+
+- Strict/typed mode always — no untyped or `any` without `// justification:` comment
+- Never hardcode secrets, API keys, or config values
+- All config from environment variables, validated at startup
+- Every async operation has explicit error handling
+- No `console.log` / `print()` in production paths
+- Functions under 50 lines
+- No N+1 patterns (fetch/query inside a loop)
+- Input validation at every user-facing boundary
+
+## Architecture
+
+```
+Routes/Controllers  → HTTP only, no business logic
+Services            → Business logic only, no HTTP concerns
+Utils               → Pure functions only
+Config              → Env var loading, validated at startup
+```
+
+Business logic in route handlers = always a refactoring target.
+
+## Error Handling
+
+```typescript
+try {
+  const result = await operation();
+  return { success: true, data: result };
+} catch (error) {
+  logger.error('context', { error });
+  throw new Error(`Failed: ${error instanceof Error ? error.message : 'unknown'}`);
+}
+```
+
+## Config Pattern
+
+```typescript
+// Fail fast at startup
+const required = (key: string) => {
+  const v = process.env[key];
+  if (!v) throw new Error(`Required env var missing: ${key}`);
+  return v;
+};
+```
+
+## Before Any New Feature
+
+1. Check `specs/` for existing spec
+2. If no spec, generate one: `/vibe-hardener spec "description"`
+3. Implement one acceptance criterion at a time
+4. Verify each before moving to next
+
+## Before Any PR
+
+Run through `checklists/pre-deploy.md`.
+Flag anything that fails.
+
+## Skill Available
+
+This project has `vibe-hardener` installed.
+Reference in prompts: "Using vibe-hardener standards, [task]"

@@ -1,0 +1,13 @@
+# Never commit actual env files
+.env
+*.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
