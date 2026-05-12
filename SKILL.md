@@ -1222,6 +1222,40 @@ def scrub_sensitive_data(event, hint):
 
 This mode has four sections: assess what exists, write tests before code, unit test patterns, and integration test patterns.
 
+### 8.1 Assess the Current Test Situation
+
+Before writing a single test, understand what already exists and what's missing.
+
+```bash
+# Count test files vs source files
+find src -name "*.ts" -not -name "*.test.ts" -not -name "*.spec.ts" | wc -l
+find src -name "*.test.ts" -o -name "*.spec.ts" | wc -l
+
+# Same for Python
+find . -name "*.py" -not -name "test_*.py" -not -name "*_test.py" \
+  -not -path "*/venv/*" | wc -l
+find . -name "test_*.py" -o -name "*_test.py" | wc -l
+
+# TypeScript coverage (if configured)
+npx jest --coverage --coverageReporters=text-summary 2>/dev/null | tail -5
+
+# Python coverage
+python -m pytest --co -q 2>/dev/null | tail -5
+```
+
+**Report the following:**
+- Test file count vs source file count
+- Which source files have zero test coverage (list them)
+- Whether a test runner is configured (jest.config, pytest.ini, vitest.config)
+- Whether coverage thresholds are enforced in CI
+
+**Triage by risk:** Not everything needs 100% coverage. Prioritize tests for:
+1. Business logic with branching (calculations, validation, rules)
+2. Auth and permission checks
+3. Data transformation functions
+4. Error handling paths
+5. External API integrations
+
 ---
 
 ## Quick Reference
