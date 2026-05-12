@@ -1743,6 +1743,16 @@ async function getOrders(params: PaginationParams): Promise<{
 
 ---
 
+## MODE 10: API DESIGN
+
+**Trigger:** User is designing or reviewing API endpoints, asks about REST conventions, or is building something that other code (or other teams) will call.
+
+**Rule:** An API is a contract. Once callers depend on it, changing it is expensive. Get it right before it ships.
+
+This mode covers: HTTP status codes, error response shape, pagination, idempotency, versioning, and documentation.
+
+---
+
 ## Quick Reference
 
 | Prompt | What happens |
