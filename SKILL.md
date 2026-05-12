@@ -658,6 +658,8 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ Config not hardcoded — uses environment variables
 □ Separation of concerns preserved
 □ No new circular dependencies introduced
+□ Any new env vars documented in .env.example with description
+□ Any new env vars added to deployment platform config (Vercel / Railway / Fly.io / etc.)
 ```
 
 **Security**
