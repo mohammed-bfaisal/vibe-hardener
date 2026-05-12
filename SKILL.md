@@ -688,6 +688,16 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ npm audit: no new critical/high vulnerabilities
 ```
 
+**Performance**
+```
+□ No new list endpoints without pagination (limit parameter + max cap)
+□ No new queries on columns that are not indexed (check with EXPLAIN ANALYZE)
+□ No new event listeners added without cleanup
+□ No new setInterval without clearInterval
+□ No new whole-library imports on frontend (check bundle impact)
+□ No new unbounded in-memory collections (Maps/Sets with no eviction)
+```
+
 **Testing**
 ```
 □ New business logic has unit tests covering happy path and error paths
