@@ -41,7 +41,12 @@ A single `SKILL.md` file — an agent skill — that gives any AI coding agent t
 - **Refactor** — transform to production standards: config extraction, error boundaries, SRP, typed inputs, Promise flattening, repository pattern
 - **Security review** — full OWASP Top 10 pass including SSRF, path traversal, timing attacks, CSRF, CSP, cookie flags
 - **Spec** — interview you, produce a complete spec (acceptance criteria, NFRs, API contract, rollback plan), then gate on approval before writing code
-- **Pre-PR review** — checklist covering code quality, architecture, security, breaking changes, and git hygiene
+- **Pre-PR review** — checklist covering code quality, architecture, security, testing, observability, dependencies, and git hygiene
+- **Observability** — structured logging with correct log levels, correlation ID middleware, health check endpoint, error tracking (Sentry/Bugsnag) with PII scrubbing
+- **Testing** — TDD gate before implementation, unit test patterns, integration tests with transaction rollback, test quality checklist
+- **Performance** — database index analysis with `EXPLAIN ANALYZE`, cache-aside pattern with Redis, frontend bundle optimization, memory leak detection, cursor-based pagination
+- **API design** — HTTP status code semantics, consistent error response shape with centralised handler, idempotency keys, versioning with Sunset headers, OpenAPI generation
+- **Dependency hygiene** — unused package detection, license compatibility scan (blocks GPL in commercial projects), lockfile discipline, native platform replacements for bloated packages
 
 Works with TypeScript, JavaScript, Python, and Go. Degrades gracefully when the agent has no shell access.
 
@@ -115,6 +120,21 @@ use vibe-hardener to spec "add rate limiting to the auth endpoint"
 
 use vibe-hardener to review
 → Pre-PR checklist — catch everything before you push
+
+use vibe-hardener to observability
+→ Adds structured logging, correlation IDs, /health endpoint, error tracking setup
+
+use vibe-hardener to testing
+→ TDD gate + unit/integration test patterns + test quality checklist
+
+use vibe-hardener to performance
+→ DB index review, cache opportunities, bundle size, memory leaks, pagination gaps
+
+use vibe-hardener to api-design
+→ HTTP status codes, error shape, idempotency, versioning, OpenAPI documentation
+
+use vibe-hardener to dependency-hygiene
+→ Unused deps, license scan, lockfile check, native platform replacements
 ```
 
 ### In any agent
