@@ -557,6 +557,7 @@ Ask these questions one at a time. Do not ask all at once. Adapt based on answer
 5. What existing code does this touch or depend on?
 6. Any performance targets? (latency, throughput, scale)
 7. Any security, compliance, or integration constraints?
+8. If this ships and breaks something, how do we roll it back?
 
 ### Step 2 — Generate the Spec
 
@@ -607,6 +608,12 @@ Errors:   400 [reason], 401 [reason], 404 [reason]
 - Schema changes: [table/collection, migration needed: yes/no]
 - New env vars: [VAR_NAME=description, or "None"]
 - Breaking changes: [yes/no — if yes, migration plan required]
+
+## Rollback Plan
+[How to revert this feature if it causes problems in production]
+- Feature flag: [yes/no]
+- DB migration reversible: [yes/no — if no, explain why it is safe]
+- Rollback steps: [ordered list, or "revert commit + redeploy"]
 ```
 
 ### Step 3 — Gate on Approval
