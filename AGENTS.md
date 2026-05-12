@@ -14,11 +14,11 @@ This project uses the `vibe-hardener` skill.
 Installed at: `.claude/skills/vibe-hardener/SKILL.md`
 
 Invoke:
-- `/vibe-hardener audit` → full codebase audit
-- `/vibe-hardener refactor [path]` → production-grade refactor
-- `/vibe-hardener security-review` → OWASP Top 10 scan
-- `/vibe-hardener spec [description]` → spec before implementing
-- `/vibe-hardener review` → pre-PR checklist
+- `use vibe-hardener to audit` → full codebase audit
+- `use vibe-hardener to refactor [path]` → production-grade refactor
+- `use vibe-hardener to security-review` → OWASP Top 10 scan
+- `use vibe-hardener to spec [description]` → spec before implementing
+- `use vibe-hardener to review` → pre-PR checklist
 
 ---
 
@@ -115,7 +115,7 @@ def required(key: str) -> str:
 
 New features require a spec file before implementation.
 Format: `specs/YYYY-MM-DD-feature-name.md`
-Use: `/vibe-hardener spec "description"` to generate.
+Use: `"use vibe-hardener to spec [description]"` to generate.
 
 ## Session Management
 
