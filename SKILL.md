@@ -6,30 +6,6 @@ description: >
   Works with any stack, any language, any agent.
   Invoke with: "use vibe-hardener to [audit/refactor/security-review/spec/review]"
   Or use slash commands: /vibe-hardener [mode]
-triggers:
-  - "audit this codebase"
-  - "make this production ready"
-  - "refactor"
-  - "security review"
-  - "code review"
-  - "pre-pr review"
-  - "spec"
-  - "de-vibe"
-  - "clean up this code"
-  - "vibe-hardener"
-  - "senior engineer review"
-compatible_agents:
-  - claude-code
-  - codex-cli
-  - cursor
-  - windsurf
-  - github-copilot
-  - gemini-cli
-  - kiro
-  - generic
-version: "1.0"
-author: "mbf"
-license: MIT
 ---
 
 # vibe-hardener
