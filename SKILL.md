@@ -1277,6 +1277,67 @@ Do not write more than one failing test at a time. Do not implement more than wh
 
 **Everything else:** test first.
 
+### 8.3 Unit Test Patterns
+
+A unit test tests one function in isolation. It does not hit the database, network, or filesystem.
+
+```typescript
+// ✅ CORRECT — tests one thing, readable, isolated
+import { calculateDiscount } from '../services/pricing';
+
+describe('calculateDiscount', () => {
+  it('applies percentage discount to base price', () => {
+    expect(calculateDiscount(100, 0.2)).toBe(80);
+  });
+
+  it('returns original price when discount is zero', () => {
+    expect(calculateDiscount(100, 0)).toBe(100);
+  });
+
+  it('throws when discount exceeds 100%', () => {
+    expect(() => calculateDiscount(100, 1.1)).toThrow('Discount cannot exceed 100%');
+  });
+
+  it('throws on negative price', () => {
+    expect(() => calculateDiscount(-10, 0.2)).toThrow('Price must be positive');
+  });
+});
+
+// ❌ WRONG — tests too many things at once, hits real dependencies
+it('processes order', async () => {
+  const result = await processOrder(db, email, payment, userId, items);
+  expect(result.status).toBe('complete');
+});
+```
+
+```python
+# ✅ CORRECT
+import pytest
+from services.pricing import calculate_discount
+
+class TestCalculateDiscount:
+    def test_applies_percentage_discount(self):
+        assert calculate_discount(100, 0.2) == 80
+
+    def test_returns_original_when_no_discount(self):
+        assert calculate_discount(100, 0) == 100
+
+    def test_raises_on_discount_over_100_percent(self):
+        with pytest.raises(ValueError, match="cannot exceed 100%"):
+            calculate_discount(100, 1.1)
+
+    def test_raises_on_negative_price(self):
+        with pytest.raises(ValueError, match="must be positive"):
+            calculate_discount(-10, 0.2)
+```
+
+**Unit test rules:**
+- One assertion per test where possible — when a test fails, the name tells you exactly what broke
+- Test names read as sentences: `"applies percentage discount to base price"`
+- Always test the error paths — they're what breaks in production
+- Mock external dependencies (DB, HTTP, filesystem) at the boundary — never in the middle of business logic
+- Never test implementation details — test behaviour (what it does, not how)
+
 ---
 
 ## Quick Reference
