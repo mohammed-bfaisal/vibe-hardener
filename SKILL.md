@@ -2308,6 +2308,56 @@ python manage.py migrate app_name 0012  # revert to migration 0012
 - Never use `atomic = False` on a migration unless you have a specific reason (e.g., `CREATE INDEX CONCURRENTLY`) and document why
 - Squash migrations when the history grows over 50 files, but test the squash on a fresh database first
 
+### 12.5 Migration Approval Gate
+
+No migration runs in production without passing this checklist. Say explicitly: "Do not run this migration until every item below is checked."
+
+```
+□ Migration has been reviewed by at least one other person
+□ downgrade() / rollback function is real and tested — not a stub
+□ Migration was tested on a staging environment with production-scale data
+□ Every table affected has been checked for row count (see 12.2 query)
+□ Any locking operation (ALTER TABLE, CREATE INDEX) has been assessed for
+  duration at prod scale — acceptable downtime confirmed or CONCURRENTLY used
+□ Deployment order is documented:
+    [ ] Deploy code first, then migrate  (removing a column / table)
+    [ ] Migrate first, then deploy code  (adding a column with default)
+    [ ] Both can happen in any order     (additive, nullable, no constraint change)
+□ Application code handles BOTH old and new schema during the deploy window
+□ Rollback steps are written in the deployment runbook — not assumed
+□ If migration fails mid-way: what is the recovery procedure?
+□ Any data deleted or overwritten has been backed up or is reproducible
+```
+
+**Output format when migration mode is triggered:**
+
+```markdown
+## Migration Review — [migration name]
+
+### What this migration does
+[Plain English description]
+
+### Lock analysis
+| Operation | Lock type | Estimated duration at prod scale | Safe? |
+|---|---|---|---|
+
+### Deployment order
+[ ] Migrate first / [ ] Deploy code first / [ ] Either order
+
+### Rollback plan
+[Steps to undo this migration if it causes problems]
+
+### ✅ Approval checklist
+[The checklist above, completed]
+
+### Verdict
+[ ] APPROVED — safe to run in production
+[ ] CONDITIONAL — run during low-traffic window, have DBA on call
+[ ] BLOCKED — address items above before scheduling
+```
+
+---
+
 ### 12.3 Safe Migration Patterns
 
 **The Expand / Migrate / Contract pattern — use for every breaking schema change**
