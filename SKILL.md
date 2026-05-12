@@ -2673,6 +2673,120 @@ app.post('/api/generate', authenticate, llmRateLimit, async (req, res) => {
 - Rate limit per authenticated user on any user-facing LLM endpoint — a single user must not be able to exhaust your budget
 - Input length cap: truncate or reject user input over a reasonable length before sending to the model
 
+### 14.3 LLM Output Validation
+
+**Why this section exists:** A typed function return is guaranteed by the compiler. An LLM response is not. Even when you ask for JSON, the model can return malformed JSON, a valid JSON object with the wrong schema, null, a refusal message, or a hallucinated field with a plausible-sounding but wrong value. AI agents use LLM output directly as typed data without validation, which causes runtime crashes and silent data corruption.
+
+```bash
+# LLM responses used without validation
+grep -rn "JSON\.parse\|response\.choices\[0\]\|message\.content\|\.content\[0\]\.text" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "safeParse\|validate\|schema\|\.test\." | head -20
+```
+
+```typescript
+// ❌ WRONG — trusting JSON output without validation
+const response = await openai.chat.completions.create({
+  response_format: { type: 'json_object' },
+  messages: [{ role: 'user', content: 'Extract user data as JSON' }],
+});
+const data = JSON.parse(response.choices[0].message.content!); // crashes if null or invalid JSON
+// data.email is typed as any — no guarantee it exists or is a string
+
+// ✅ CORRECT — validate schema before use
+import { z } from 'zod';
+
+const UserExtractionSchema = z.object({
+  name: z.string().min(1),
+  email: z.string().email(),
+  age: z.number().int().positive().optional(),
+});
+
+const raw = response.choices[0].message.content;
+if (!raw) {
+  logger.error('LLM returned empty response', { model: 'gpt-4o', task: 'user-extraction' });
+  throw new Error('LLM returned no content');
+}
+
+let parsed: unknown;
+try {
+  parsed = JSON.parse(raw);
+} catch {
+  logger.error('LLM returned invalid JSON', { raw: raw.slice(0, 300) });
+  throw new Error('LLM output was not valid JSON');
+}
+
+const result = UserExtractionSchema.safeParse(parsed);
+if (!result.success) {
+  logger.error('LLM output failed schema validation', {
+    errors: result.error.issues,
+    raw: raw.slice(0, 300),
+  });
+  throw new Error('LLM output did not match expected schema');
+}
+
+// result.data is fully typed — safe to use
+return result.data;
+```
+
+```python
+# Python equivalent — pydantic
+from pydantic import BaseModel, EmailStr, ValidationError
+import json
+
+class UserExtraction(BaseModel):
+    name: str
+    email: EmailStr
+    age: int | None = None
+
+raw = response.content[0].text
+if not raw:
+    raise ValueError("LLM returned empty response")
+
+try:
+    parsed = json.loads(raw)
+except json.JSONDecodeError as e:
+    logger.error("LLM returned invalid JSON", extra={"raw": raw[:300], "error": str(e)})
+    raise
+
+try:
+    result = UserExtraction.model_validate(parsed)
+except ValidationError as e:
+    logger.error("LLM output failed schema validation", extra={"errors": e.errors(), "raw": raw[:300]})
+    raise
+
+return result  # fully typed and validated
+```
+
+**For tool/function calls — validate argument schemas before executing:**
+
+```typescript
+// ❌ WRONG — executing whatever function the model chose with whatever args it provided
+const toolCall = response.choices[0].message.tool_calls?.[0];
+const args = JSON.parse(toolCall.function.arguments); // unvalidated
+await executeFunction(toolCall.function.name, args); // could be any function, any args
+
+// ✅ CORRECT — whitelist functions, validate args
+const ALLOWED_TOOLS = new Set(['search_products', 'get_order_status']);
+const toolCall = response.choices[0].message.tool_calls?.[0];
+
+if (!ALLOWED_TOOLS.has(toolCall.function.name)) {
+  throw new Error(`Model called disallowed function: ${toolCall.function.name}`);
+}
+
+const args = toolCallSchemas[toolCall.function.name].parse(
+  JSON.parse(toolCall.function.arguments)
+); // throws if args don't match schema
+await executeFunction(toolCall.function.name, args);
+```
+
+**Rules:**
+- Never use LLM JSON output without schema validation — treat it like user input at the boundary
+- Always handle null/empty responses — models return null on safety refusals
+- Log the raw output on validation failure — you need it to debug prompt issues
+- Never execute shell commands, SQL, or file operations based on unvalidated model output
+- For streaming responses: validate the accumulated content after the stream completes, not chunk by chunk
+
 ---
 
 ## MODE 13: CI/CD AND CONTAINER HYGIENE
