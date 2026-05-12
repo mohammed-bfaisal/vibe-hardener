@@ -124,6 +124,18 @@ git ls-files | grep -E "package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lo
 
 # Floating versions in package.json
 grep -E '"[^"]+": "(\*|latest|\^[0-9]|~[0-9])' package.json 2>/dev/null | head -10 || true
+
+# Cognitive complexity — cyclomatic complexity (Node/TypeScript)
+# A function can be 40 lines with 18 independent execution paths and be unmaintainable
+npx eslint --rule '{"complexity": ["error", {"max": 10}]}' src/ \
+  --ext .ts,.js 2>/dev/null | grep "complexity" | head -20 || true
+
+# Cognitive complexity — Python cyclomatic complexity (radon)
+# Grade: A (1-5) fine, B (6-10) review, C (11-15) refactor, D-F (>15) block
+python -m radon cc src/ -a -nb 2>/dev/null | head -30 || true
+
+# Cognitive complexity — Python cognitive complexity (lizard)
+python -m lizard src/ -C 15 2>/dev/null | head -20 || true
 ```
 
 ### Step 2 — Manual Pattern Scan
@@ -146,6 +158,7 @@ Check every file in scope for:
 - `console.log` / `print()` left in production code paths
 - Hardcoded configuration: URLs, limits, timeouts, magic numbers
 - Functions over 50 lines doing multiple things
+- Functions with cyclomatic complexity >10 — a function can be 40 lines with 18 independent execution paths and be completely unmaintainable (line count alone does not catch this)
 - Database or API fetches inside loops (N+1)
 - Same logic copy-pasted in multiple places (DRY violation)
 - User endpoint with no input validation
