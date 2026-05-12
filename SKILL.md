@@ -1002,6 +1002,50 @@ logger.info("Order placed", extra={
 - `service` / `component` (where in the codebase)
 - Relevant IDs: `userId`, `requestId`, `orderId` — whatever makes this event findable
 
+### 7.3 Correlation IDs (Request Tracing)
+
+Without a correlation ID, you cannot trace a single user request across multiple log lines. Add it once at the entry point and attach it to every log downstream.
+
+```typescript
+// middleware/correlationId.ts
+import { randomUUID } from 'crypto';
+import { Request, Response, NextFunction } from 'express';
+
+export function correlationIdMiddleware(req: Request, res: Response, next: NextFunction) {
+  const correlationId = (req.headers['x-correlation-id'] as string) ?? randomUUID();
+  req.correlationId = correlationId;
+  res.setHeader('x-correlation-id', correlationId);
+  next();
+}
+
+// Usage in every downstream log:
+logger.info('Processing payment', {
+  correlationId: req.correlationId,
+  userId: req.user.id,
+});
+
+// Pass it to outgoing HTTP calls too:
+await fetch(upstreamUrl, {
+  headers: { 'x-correlation-id': req.correlationId },
+});
+```
+
+```python
+# middleware — FastAPI / Starlette example
+import uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        correlation_id = request.headers.get("x-correlation-id", str(uuid.uuid4()))
+        request.state.correlation_id = correlation_id
+        response = await call_next(request)
+        response.headers["x-correlation-id"] = correlation_id
+        return response
+```
+
+**Rule:** Every log emitted during a request must carry `correlationId`. If it doesn't, you cannot reconstruct what happened for a specific user complaint.
+
 ---
 
 ## Quick Reference
