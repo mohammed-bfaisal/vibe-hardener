@@ -1797,6 +1797,7 @@ res.status(200).json(newUser);
 
 // ✅ CORRECT
 res.status(201).json({ success: true, data: newUser });
+```
 
 ### 10.2 Consistent Error Response Shape
 
@@ -1848,6 +1849,7 @@ async def validation_error_handler(request: Request, exc: ValidationError):
         "message": str(exc),
         "field": exc.field,
     })
+```
 
 ### 10.3 Idempotency for Mutation Endpoints
 
@@ -1915,6 +1917,7 @@ app.use('/api/v1', (req, res, next) => {
   res.setHeader('Link', '</api/v2>; rel="successor-version"');
   next();
 }, v1Router);
+```
 
 ### 10.5 OpenAPI Documentation
 
@@ -1960,9 +1963,6 @@ paths:
 - FastAPI: automatic OpenAPI generation at `/docs`
 - NestJS: `@nestjs/swagger` decorators
 - Never maintain a hand-written OpenAPI spec separately from the code — it will diverge
-```
-```
-```
 
 ---
 
@@ -2029,6 +2029,27 @@ Unlicense, CC0                        ✅ Public domain
 ```
 
 **Rule:** Before adding any dependency to a commercial project, check its license. One `npm install` away from a legal problem.
+
+### 11.3 Lockfile and Version Pinning
+
+```bash
+# Check lockfile is committed
+git ls-files | grep -E "package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock"
+
+# Check for missing lockfile
+ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null || echo "WARNING: no lockfile found"
+
+# Check for floating versions (^ or ~ without lockfile control)
+grep -E '"[^"]+": "\^|~' package.json | head -20
+```
+
+**Rules:**
+- Lockfile must be committed — without it, `npm install` on a fresh machine can install different versions
+- In `package.json`, `^` (caret) is acceptable if the lockfile is committed and kept up to date
+- Avoid `*` or `latest` for any production dependency — supply chain attacks target this
+- Pin exact versions (`"1.2.3"` not `"^1.2.3"`) for security-sensitive packages: auth libraries, crypto, validators
+- `devDependencies` are lower risk — `^` is fine there
+- Update dependencies on a schedule (weekly via Dependabot or Renovate), not reactively
 
 ---
 
