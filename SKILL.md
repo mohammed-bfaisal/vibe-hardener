@@ -2181,6 +2181,63 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 This mode has five sections: review protocol, locking analysis, safe migration patterns, ORM-specific rules, and the approval gate.
 
+### 12.1 Migration Review Protocol
+
+Before writing or running any migration, answer every question below. A single "no" is a block.
+
+**Reversibility**
+- Does this migration have a `down` / `downgrade` / rollback step?
+- Does the rollback actually undo the change (not just a stub `pass`)?
+- If the rollback runs after new data has been written in the new schema, does it handle that data safely?
+
+**Destructive operations — flag every one of these**
+- Does it DROP a table, DROP a column, or TRUNCATE? → Is the data backed up? Is every code reference to that table/column already removed and deployed?
+- Does it DELETE rows? → Is there a WHERE clause? Has it been tested on a subset first?
+- Does it rename a column or table? → Is the application code updated and deployed before the migration runs?
+
+**Constraint additions on existing tables**
+- Does it add NOT NULL to a column that may have existing NULL rows? → Backfill first, then add constraint.
+- Does it add a UNIQUE constraint? → Does existing data already violate it? Run a duplicate check first.
+- Does it add a FOREIGN KEY? → Do orphaned rows exist? Clean them up first.
+- Does it add a CHECK constraint? → Do existing rows violate it?
+
+**Deployment ordering**
+- Does the running application code need to handle BOTH the old and new schema during the deploy window?
+- Is the migration applied before or after the code deploy? (adding a column = migrate first; removing a column = deploy code first)
+
+### 12.2 Lock Analysis
+
+Different operations acquire different locks on PostgreSQL (and equivalent engines). A migration that holds an exclusive lock on a large table causes every query touching that table to queue behind it — effectively taking the table offline.
+
+```
+Operation                          Lock level         Safe on large table?
+─────────────────────────────────────────────────────────────────────────
+ADD COLUMN (nullable, no default)  AccessShareLock    ✅ Yes — instant
+ADD COLUMN NOT NULL with DEFAULT   AccessExclusiveLock ❌ No — rewrites table in Postgres <11
+                                                       ✅ Postgres 11+ uses metadata only
+DROP COLUMN                        AccessExclusiveLock ❌ No — locks full table
+ADD INDEX (non-concurrent)         ShareLock           ❌ Blocks writes
+ADD INDEX CONCURRENTLY             No exclusive lock   ✅ Yes — use always on prod
+ADD CONSTRAINT NOT NULL            AccessExclusiveLock ❌ Rewrites table (pre-PG 18)
+ADD CONSTRAINT UNIQUE              ShareRowExclusiveLock ❌ Scans full table
+RENAME COLUMN/TABLE                AccessExclusiveLock ❌ No — locks and breaks live queries
+ALTER COLUMN TYPE                  AccessExclusiveLock ❌ Full rewrite unless trivial cast
+```
+
+**Rules:**
+- Always use `CREATE INDEX CONCURRENTLY` on production tables — never plain `CREATE INDEX`
+- Adding a NOT NULL column: add nullable → deploy code → backfill → add constraint (never one-shot)
+- Renaming anything: expand (add new name) → migrate code → contract (remove old name) — never rename directly on a live table
+- Before running any migration on a table over 1M rows: check its current size and estimate lock duration
+
+```sql
+-- Check table size before migrating
+SELECT relname, pg_size_pretty(pg_total_relation_size(relid)) AS size,
+       n_live_tup AS approx_rows
+FROM pg_stat_user_tables
+WHERE relname = 'your_table_name';
+```
+
 ---
 
 ## Quick Reference
