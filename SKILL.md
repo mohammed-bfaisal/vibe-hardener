@@ -1838,6 +1838,45 @@ async def validation_error_handler(request: Request, exc: ValidationError):
         "message": str(exc),
         "field": exc.field,
     })
+
+### 10.3 Idempotency for Mutation Endpoints
+
+A network retry should not create duplicate records. Payment endpoints, order creation, and any operation with real-world side effects must be idempotent.
+
+```typescript
+// ❌ WRONG — retrying POST /orders creates duplicate orders
+app.post('/orders', async (req, res) => {
+  const order = await orderRepository.create(req.body);
+  res.status(201).json(order);
+});
+
+// ✅ CORRECT — idempotency key prevents duplicates
+app.post('/orders', async (req, res) => {
+  const idempotencyKey = req.headers['idempotency-key'] as string;
+  if (!idempotencyKey) {
+    return res.status(400).json({ error: 'MISSING_IDEMPOTENCY_KEY',
+      message: 'Include Idempotency-Key header for order creation' });
+  }
+
+  // Check if this key was already used
+  const existing = await idempotencyStore.get(idempotencyKey);
+  if (existing) {
+    return res.status(200).json(existing); // return cached result, same as original
+  }
+
+  const order = await orderRepository.create(req.body);
+
+  // Store result keyed by idempotency key (TTL: 24h)
+  await idempotencyStore.set(idempotencyKey, order, 86400);
+  res.status(201).json(order);
+});
+```
+
+**Idempotency rules:**
+- Any endpoint that creates a resource, charges money, or sends a message needs an idempotency key
+- Store the full response — return exactly the same response on replay, including status code
+- TTL on idempotency keys: 24 hours is standard (matches typical retry windows)
+- For PUT/PATCH: these should be naturally idempotent — sending the same data twice must produce the same state
 ```
 ```
 
