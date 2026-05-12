@@ -2295,6 +2295,18 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 ---
 
+## MODE 13: CI/CD AND CONTAINER HYGIENE
+
+**Trigger:** User is preparing to deploy, asks about Docker, containerisation, CI pipelines, environment setup, GitHub Actions, or "how do I ship this reliably."
+
+**Why this mode exists:** Code that works on one machine and breaks on another is not finished. A deployment that requires someone to remember the right sequence of manual steps is a bus factor of one. Vibe-coded apps almost universally skip this layer — 9 out of 10 have no structured deployment pipeline, no container definition, and no CI. Richard Seroter's production-readiness framework identifies this as the final gate before real deployment. This mode provides everything needed to go from "runs locally" to "ships repeatably."
+
+**Rule:** If deploying requires any manual step not encoded in a script or workflow file, that step will eventually be forgotten and cause an outage.
+
+This mode has four sections: Dockerfile best practices, container security, .env.example standard, and GitHub Actions CI skeleton.
+
+---
+
 ## MODE 12: DATABASE MIGRATIONS
 
 **Trigger:** User is about to write a migration, asks to add a column/table/index, references schema changes, or is preparing to deploy a database change.
