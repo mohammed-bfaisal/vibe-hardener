@@ -2559,6 +2559,120 @@ if (containsInjectionAttempt(userInput)) {
 }
 ```
 
+### 14.2 LLM Cost Control
+
+**Why this section exists:** LLM API costs are unbounded by default. Models return up to the full context window unless `max_tokens` is set. Agent loops with no iteration ceiling run indefinitely. One user triggering a poorly-guarded agent loop can exhaust a monthly API budget in minutes. Unlike a slow database query, runaway LLM usage does not time out — it keeps billing until you notice. This failure mode is entirely absent from standard error handling and performance reviews.
+
+```bash
+# LLM calls with no max_tokens — unbounded output cost
+grep -rn "chat\.completions\.create\|messages\.create\|generateText\|streamText" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "max_tokens\|maxTokens\|max_output_tokens\|\.test\." | head -20
+
+# Agent/agentic loops with no iteration cap
+grep -rn "while.*await.*\(chat\|message\|complete\|generat\)\|\.run.*loop\|\.stream" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "maxSteps\|maxIterations\|MAX_\|limit\|\.test\." | head -10
+```
+
+```typescript
+// ❌ WRONG — no token limit, no iteration cap, no cost logging
+async function runAgent(task: string) {
+  let done = false;
+  while (!done) {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: buildMessages(task),
+      // no max_tokens — model can return 4096+ tokens per call
+    });
+    done = parseIsDone(response.choices[0].message.content);
+  }
+}
+
+// ✅ CORRECT — bounded tokens, bounded iterations, cost logged on every call
+const MAX_AGENT_ITERATIONS = 10;
+const MAX_TOKENS_PER_CALL = 1_500;
+
+async function runAgent(task: string): Promise<string> {
+  let totalTokens = 0;
+
+  for (let iteration = 0; iteration < MAX_AGENT_ITERATIONS; iteration++) {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: buildMessages(task),
+      max_tokens: MAX_TOKENS_PER_CALL,
+    });
+
+    const used = response.usage?.total_tokens ?? 0;
+    totalTokens += used;
+    logger.info('LLM call', { iteration: iteration + 1, tokensThisCall: used, totalTokens });
+
+    const content = response.choices[0].message.content ?? '';
+    if (parseIsDone(content)) return content;
+  }
+
+  logger.warn('Agent reached iteration limit', { task: task.slice(0, 100), totalTokens });
+  throw new Error('Agent did not complete within iteration limit');
+}
+```
+
+```python
+# Python equivalent
+MAX_ITERATIONS = 10
+MAX_TOKENS = 1_500
+
+async def run_agent(task: str) -> str:
+    total_tokens = 0
+
+    for iteration in range(MAX_ITERATIONS):
+        response = await client.messages.create(
+            model="claude-sonnet-4-6",
+            system=AGENT_SYSTEM_PROMPT,
+            messages=build_messages(task),
+            max_tokens=MAX_TOKENS,
+        )
+        total_tokens += response.usage.input_tokens + response.usage.output_tokens
+        logger.info("LLM call", extra={"iteration": iteration + 1, "total_tokens": total_tokens})
+
+        if is_done(response.content[0].text):
+            return response.content[0].text
+
+    logger.warning("Agent hit iteration limit", extra={"task": task[:100], "total_tokens": total_tokens})
+    raise RuntimeError("Agent did not complete within iteration limit")
+```
+
+**Per-user rate limiting on LLM endpoints:**
+
+```typescript
+// ❌ WRONG — one user can trigger unlimited LLM calls
+app.post('/api/generate', async (req, res) => {
+  const result = await callLLM(req.body.prompt);
+  res.json(result);
+});
+
+// ✅ CORRECT — rate limit per user, not just per IP
+import rateLimit from 'express-rate-limit';
+
+const llmRateLimit = rateLimit({
+  windowMs: 60 * 1000,  // 1 minute
+  max: 10,              // 10 LLM calls per user per minute
+  keyGenerator: (req) => req.user?.id ?? req.ip, // per-user, not per-IP
+  message: { error: 'RATE_LIMITED', message: 'Too many requests. Try again in a minute.' },
+});
+
+app.post('/api/generate', authenticate, llmRateLimit, async (req, res) => {
+  const result = await callLLM(req.body.prompt);
+  res.json(result);
+});
+```
+
+**Rules:**
+- Always set `max_tokens` — the model's default is the full context window
+- Always cap agent loop iterations — no loop that calls an LLM should be unbounded
+- Log `usage.total_tokens` on every call — cost surprises in production always trace to calls nobody was measuring
+- Rate limit per authenticated user on any user-facing LLM endpoint — a single user must not be able to exhaust your budget
+- Input length cap: truncate or reject user input over a reasonable length before sending to the model
+
 ---
 
 ## MODE 13: CI/CD AND CONTAINER HYGIENE
