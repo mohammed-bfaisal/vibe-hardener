@@ -37,11 +37,13 @@ This happens because AI agents optimize for *working code*, not *production code
 
 A single `SKILL.md` file — an agent skill — that gives any AI coding agent the context, rules, and workflows of a senior software engineer. Drop it into any project and your agent will:
 
-- **Audit** existing code for vibe-code signatures before you touch it
-- **Refactor** to production standards (SRP, error handling, config extraction, proper typing)
-- **Review** security against OWASP Top 10 before every deploy
-- **Spec** features properly before writing a single line
-- **Review** your diff before you open a PR
+- **Audit** — scan for vibe-code signatures with runnable grep commands and a severity-graded report
+- **Refactor** — transform to production standards: config extraction, error boundaries, SRP, typed inputs, Promise flattening, repository pattern
+- **Security review** — full OWASP Top 10 pass including SSRF, path traversal, timing attacks, CSRF, CSP, cookie flags
+- **Spec** — interview you, produce a complete spec (acceptance criteria, NFRs, API contract, rollback plan), then gate on approval before writing code
+- **Pre-PR review** — checklist covering code quality, architecture, security, breaking changes, and git hygiene
+
+Works with TypeScript, JavaScript, Python, and Go. Degrades gracefully when the agent has no shell access.
 
 It's not a linter. It's not a static analysis tool. It's the engineering judgment layer that AI agents are missing.
 
@@ -129,26 +131,69 @@ Reference it directly in your prompt:
 
 ## What the audit catches
 
+Runs scan commands first (grep, git log, npm audit), then a manual pattern pass. If your agent has no shell access it falls back to reading files directly and tells you which scans to run manually.
+
 **HIGH — blocks production**
-- Hardcoded secrets and API keys in source
-- Empty catch blocks / silent error swallowing
+- Hardcoded secrets, API keys, tokens in source
+- Empty or silent catch blocks
 - Client-side-only auth (no server enforcement)
 - `.env` committed to git
+- SQL/NoSQL queries built with string concatenation
+- User-controlled URLs passed to server-side HTTP clients (SSRF)
+- Unvalidated user input in file path operations (path traversal)
+- Floating `.then()` chains with no `.catch()` (unhandled rejections)
+- `process.exit()` outside CLI entry points
 
 **MEDIUM — fix this sprint**
 - Untyped `any` without justification
-- `console.log` in production paths
-- Hardcoded config (URLs, limits, model strings)
+- `console.log` / `print()` in production paths
+- Hardcoded config values (URLs, limits, timeouts, magic numbers)
 - Functions over 50 lines
 - N+1 query/fetch patterns
 - Duplicate business logic
 - No input validation on endpoints
+- `readFileSync` / `writeFileSync` in request handlers (blocks event loop)
+- External HTTP calls with no timeout
+- React: `key={index}` on lists, stale `useEffect` deps, direct state mutation, `dangerouslySetInnerHTML`
 
-**LOW — tech debt sprint**
+**Architecture smells**
+- God files over 300 lines
+- Business logic in route handlers
+- Deep nesting (3+ levels)
+- Circular imports
+- Config scattered instead of centrally loaded
+
+**LOW — tech debt**
 - Inconsistent naming conventions
-- Missing JSDoc on exports
 - Commented-out code
-- Stale TODO comments
+- Stale TODO/FIXME comments
+- Missing return types on exported functions
+
+---
+
+## What the security review covers
+
+Beyond the audit, the dedicated security mode runs targeted scans and walks a full checklist:
+
+**CRITICAL (block deploy)**
+- Secrets in source and git history
+- CORS wildcard in production
+- SSRF and path traversal
+- SQL injection via string concatenation
+- `eval()` / `exec()` on user input
+
+**HIGH (fix before merge)**
+- Missing CSRF protection on cookie-auth endpoints
+- No Content-Security-Policy header
+- Auth token comparisons using `===` instead of timing-safe equality
+- Missing rate limiting on auth endpoints
+- LLM prompts with unsanitized user input
+
+**Medium**
+- Cookie flags (`httpOnly`, `secure`, `sameSite`)
+- JWT/session expiry not configured
+- Missing `helmet()` or equivalent headers
+- Dependency vulnerabilities (`npm audit` / `pip-audit`)
 
 ---
 
@@ -190,6 +235,8 @@ export const processService = {
 };
 ```
 
+Every refactor follows a fixed protocol: read first, state the plan, confirm before executing, one concern at a time. Transformations applied: config extraction, error boundaries, separation of concerns, magic value constants, input types, Promise chain flattening, and database repository isolation.
+
 ---
 
 ## What the spec protocol does
@@ -197,17 +244,21 @@ export const processService = {
 Instead of telling your agent "add user authentication" and getting 300 lines of code you don't fully understand, vibe-hardener intercepts and forces a spec first:
 
 ```
-You: /vibe-hardener spec "add user authentication"
+You: use vibe-hardener to spec "add user authentication"
 
 Agent: Before implementing, let me ask:
-  1. What auth method? (JWT, sessions, OAuth, magic link?)
-  2. What's being protected? (all routes, specific ones?)
-  3. Where does user data live? (existing DB, new table?)
-  4. Acceptance criteria — what does "done" look like?
-  5. What must this NOT do?
+  1. What does the user see when this is done?
+  2. Why does this exist — what problem does it solve?
+  3. Acceptance criteria — give me 3-5 testable ones.
+  4. What must this NOT do? (scope boundary)
+  5. What existing code does this touch?
+  6. Any performance targets?
+  7. Any security or compliance constraints?
+  8. If this ships and breaks something, how do we roll it back?
 
-[After you answer, it generates specs/2026-05-11-user-auth.md]
-[Only after you approve the spec does it write code]
+[After you answer, it generates specs/2026-05-12-user-auth.md]
+[The spec includes: acceptance criteria, NFRs, API contract shape, edge cases, rollback plan]
+[Only after you approve the spec does it write a single line of code]
 ```
 
 ---
@@ -217,12 +268,13 @@ Agent: Before implementing, let me ask:
 `SOP.md` is a complete AI Engineering Standard Operating Procedure — the full workflow from spec to deploy. It's written to be team-adopted, not just personal.
 
 It covers:
-- Spec-before-code protocol
-- Agent configuration and session management
-- Code quality standards with concrete examples
-- Security review process
+- Spec-before-code protocol with mandatory approval gate
+- Agent configuration, session management, and context rot prevention
+- Code quality standards with concrete ❌/✅ examples (TypeScript, Python, Go)
+- Security review process (full OWASP Top 10 surface)
 - Pre-deploy checklist
-- How to use AI agents without letting them make production decisions
+- Mandatory human checkpoints before DB writes, auth changes, and new dependencies
+- How to recognize when an agent has gone off-track and when to start over
 
 Use it as a template for your team's engineering culture document.
 
