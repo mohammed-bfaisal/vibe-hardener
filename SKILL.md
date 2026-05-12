@@ -1900,6 +1900,71 @@ async function getOrders(params: PaginationParams): Promise<{
 - Cursor-based pagination preferred over offset for large datasets (offset degrades at scale)
 - Always include `totalCount` or `hasNextPage` so clients know when to stop
 
+### 9.6 Statelessness Check (Horizontal Scaling Prerequisite)
+
+**Why this section exists:** Vibe-coded apps almost always store state in ways that assume a single running instance. When a second instance is added (for load balancing, zero-downtime deploys, or auto-scaling), sessions break, files disappear, and caches disagree. Seroter's production-readiness research specifically flags this as a common blocker. The question to answer before calling any backend "production-ready": if we add a second instance right now, what breaks?
+
+```bash
+# In-process session storage — default MemoryStore does not share between instances
+grep -rn "session(" src/ --include="*.ts" --include="*.js" \
+  | grep -v "store:\|RedisStore\|connect-pg\|\.test\."
+
+# Local file writes — breaks if two instances run on different machines
+grep -rn "writeFile\|createWriteStream\|fs\.open\|multer\|diskStorage" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "\.test\.\|tmp\|temp" | head -20
+
+# Module-scope in-process caches (Map/Set/object at top level) — not shared across instances
+grep -rn "^const.*= new Map\b\|^const.*= new Set\b\|^const.*Cache.*= {}" src/ \
+  --include="*.ts" --include="*.js" | grep -v "\.test\." | head -20
+```
+
+**State that must be externalised before running multiple instances:**
+
+```
+In-process state              → Replace with
+─────────────────────────────────────────────────────────────────────
+express-session MemoryStore   → RedisStore / connect-pg-simple
+File uploads to local disk    → S3 / GCS / Cloudflare R2
+Module-level Map/Set caches   → Redis with TTL
+WebSocket connection registry → Redis pub/sub or sticky sessions
+In-process job queue          → BullMQ / RQ / Celery (Redis/DB backed)
+Feature flag overrides in env → Feature flag service (LaunchDarkly, etc.)
+```
+
+```typescript
+// ❌ WRONG — MemoryStore: sessions lost on restart, not shared across instances
+import session from 'express-session';
+app.use(session({
+  secret: config.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  // no store = MemoryStore = single instance only
+}));
+
+// ✅ CORRECT — Redis-backed: survives restarts, shared across all instances
+import RedisStore from 'connect-redis';
+app.use(session({
+  store: new RedisStore({ client: redis }),
+  secret: config.sessionSecret,
+  resave: false,
+  saveUninitialized: false,
+  cookie: { httpOnly: true, secure: true, sameSite: 'strict' },
+}));
+
+// ❌ WRONG — local disk upload: only the instance that handled the upload can serve the file
+import multer from 'multer';
+const upload = multer({ dest: 'uploads/' }); // local filesystem
+
+// ✅ CORRECT — object storage: any instance can serve any file
+import multerS3 from 'multer-s3';
+const upload = multer({
+  storage: multerS3({ s3, bucket: config.uploadsBucket, key: (req, file, cb) => cb(null, `${Date.now()}-${file.originalname}`) }),
+});
+```
+
+**Rule:** If adding a second instance would break any feature, that feature is not production-ready. Fix the statefulness before adding load balancing, not after.
+
 ---
 
 ## MODE 10: API DESIGN
