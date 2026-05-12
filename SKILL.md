@@ -646,14 +646,14 @@ PORT: int = int(os.environ.get("PORT", "3000"))
 
 ## Quick Reference
 
-| Command | What happens |
+| Prompt | What happens |
 |---|---|
-| `/vibe-hardener audit` | Full audit report with severity levels |
-| `/vibe-hardener refactor [path]` | Production-grade refactor with plan first |
-| `/vibe-hardener security-review` | OWASP Top 10 + deps scan |
-| `/vibe-hardener spec [description]` | Interview → spec → implement gated |
-| `/vibe-hardener review` | Pre-PR checklist |
-| `/vibe-hardener standards` | Print the always-on rules |
+| `use vibe-hardener to audit` | Full audit report with severity levels |
+| `use vibe-hardener to refactor [path]` | Production-grade refactor with plan first |
+| `use vibe-hardener to security-review` | OWASP Top 10 + deps scan |
+| `use vibe-hardener to spec [description]` | Interview → spec → implement gated |
+| `use vibe-hardener to review` | Pre-PR checklist |
+| `use vibe-hardener to show standards` | Print the always-on rules |
 
 ---
 
