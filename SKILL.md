@@ -688,6 +688,16 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ npm audit: no new critical/high vulnerabilities
 ```
 
+**API Design**
+```
+□ New endpoints use correct HTTP status codes (201 for creates, 204 for deletes, 4xx for client errors)
+□ Error responses use the project's standard shape (not ad-hoc { message } or { error })
+□ New list endpoints have pagination (limit + cursor or offset)
+□ Endpoints that create resources or have side effects have idempotency key support
+□ Breaking changes to existing endpoints: new API version created, old version not removed yet
+□ New public endpoints documented in OpenAPI spec or equivalent
+```
+
 **Performance**
 ```
 □ No new list endpoints without pagination (limit parameter + max cap)
