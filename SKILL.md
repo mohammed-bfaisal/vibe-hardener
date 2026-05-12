@@ -635,6 +635,83 @@ class S3DocumentStore(DocumentStore):
 
 ---
 
+**Transformation 10 — Generate Linting Config (if missing)**
+
+If a project has no linter configured, generate one as part of the refactor. Code without a linter accumulates style drift and misses whole categories of bugs that static analysis catches for free. Competitors (Cursor rules repos, production AGENTS.md standards) include linting setup as a prerequisite — vibe-hardener should too.
+
+**TypeScript/Node — `eslint.config.mjs`:**
+
+```javascript
+import js from '@eslint/js';
+import tseslint from 'typescript-eslint';
+
+export default tseslint.config(
+  js.configs.recommended,
+  ...tseslint.configs.strictTypeChecked,
+  {
+    languageOptions: {
+      parserOptions: {
+        project: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+    rules: {
+      // Complexity — catches unmaintainable functions line count misses
+      'complexity': ['error', { max: 10 }],
+      // No untyped any
+      '@typescript-eslint/no-explicit-any': 'error',
+      // No floating promises
+      '@typescript-eslint/no-floating-promises': 'error',
+      // No unused variables
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_' }],
+      // Require explicit return types on exported functions
+      '@typescript-eslint/explicit-module-boundary-types': 'error',
+    },
+  },
+  {
+    ignores: ['dist/**', 'node_modules/**', '**/*.test.ts', '**/*.spec.ts'],
+  },
+);
+```
+
+Install: `npm install --save-dev eslint @eslint/js typescript-eslint`
+
+**Python — `pyproject.toml` (ruff section):**
+
+```toml
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+  "E",    # pycodestyle errors
+  "W",    # pycodestyle warnings
+  "F",    # Pyflakes (undefined names, unused imports)
+  "I",    # isort
+  "B",    # flake8-bugbear (common bugs)
+  "C90",  # McCabe complexity
+  "UP",   # pyupgrade (modern Python syntax)
+  "S",    # bandit security rules
+  "RUF",  # Ruff-specific rules
+]
+ignore = [
+  "S101",  # allow assert in tests
+]
+
+[tool.ruff.lint.mccabe]
+# Cyclomatic complexity threshold — matches the radon/lizard scan in MODE 1
+max-complexity = 10
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "B"]
+```
+
+Install: `pip install ruff` — runs as both linter and formatter (`ruff check .` + `ruff format .`)
+
+---
+
 ### What NOT to Refactor
 
 Do not:
