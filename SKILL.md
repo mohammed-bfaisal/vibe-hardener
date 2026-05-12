@@ -1415,6 +1415,29 @@ async def test_create_user_returns_201():
 - Test the actual HTTP response shape — it's what consumers depend on
 - Cover: happy path, validation error, auth error, not-found, conflict (duplicate)
 
+### 8.5 Test Quality Checklist
+
+A test suite can have 100% coverage and still be worthless. Apply this checklist to judge quality:
+
+```
+□ Tests have descriptive names — reading the name tells you what broke without reading the code
+□ Each test has one clear assertion (or a small group of closely related assertions)
+□ Tests are independent — running them in any order produces the same result
+□ No test data leaks between tests (transactions rolled back, mocks reset)
+□ Error paths are tested, not just the happy path
+□ Boundary values are tested: empty input, null, zero, max length, off-by-one
+□ Tests do not assert on internal implementation (private methods, internal state)
+□ No sleep() / arbitrary timeouts in tests — use proper async/await or hooks
+□ Mocks are minimal — only mock what is outside the unit under test
+□ Test file mirrors source structure: src/services/user.ts → src/services/user.test.ts
+```
+
+**Red flags in a test suite:**
+- Tests that always pass regardless of what the implementation does (false green)
+- Tests that duplicate each other with minor variations — extract parameterised tests
+- Tests with no assertions (`expect` never called)
+- Test setup longer than the test itself — the code is probably too coupled
+
 ---
 
 ## Quick Reference
