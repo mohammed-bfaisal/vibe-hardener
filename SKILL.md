@@ -1905,6 +1905,51 @@ app.use('/api/v1', (req, res, next) => {
   res.setHeader('Link', '</api/v2>; rel="successor-version"');
   next();
 }, v1Router);
+
+### 10.5 OpenAPI Documentation
+
+An API without documentation is only usable by the person who wrote it.
+
+```bash
+# Check if OpenAPI spec exists
+find . -name "openapi.yaml" -o -name "openapi.json" -o -name "swagger.yaml" \
+  | grep -v node_modules
+
+# Check for inline documentation (zod-to-openapi, tsoa, fastapi auto-docs)
+grep -rn "@openapi\|@swagger\|zodToOpenAPI\|@ApiProperty\|openApiSchemas" src/ \
+  --include="*.ts" --include="*.py" | head -10
+```
+
+**Minimum documentation per endpoint:**
+```yaml
+# openapi.yaml excerpt
+paths:
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+```
+
+**Preferred approach — generate from code, not by hand:**
+- TypeScript + Express: `zod-to-openapi` or `tsoa`
+- FastAPI: automatic OpenAPI generation at `/docs`
+- NestJS: `@nestjs/swagger` decorators
+- Never maintain a hand-written OpenAPI spec separately from the code — it will diverge
 ```
 ```
 ```
