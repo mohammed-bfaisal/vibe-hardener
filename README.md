@@ -151,7 +151,7 @@ Reference it directly in your prompt:
 
 ## What the audit catches
 
-Runs scan commands first (grep, git log, npm audit), then a manual pattern pass. If your agent has no shell access it falls back to reading files directly and tells you which scans to run manually.
+Runs scan commands first (grep, git log, npm audit, depcheck), then a manual pattern pass. If your agent has no shell access it falls back to reading files directly and tells you which scans to run manually.
 
 **HIGH — blocks production**
 - Hardcoded secrets, API keys, tokens in source
@@ -174,6 +174,11 @@ Runs scan commands first (grep, git log, npm audit), then a manual pattern pass.
 - No input validation on endpoints
 - `readFileSync` / `writeFileSync` in request handlers (blocks event loop)
 - External HTTP calls with no timeout
+- List endpoints with no `limit` parameter (unbounded result sets)
+- Event listeners added without corresponding cleanup (memory leak)
+- No structured logger — `console.log` used instead of a loggable, alertable logger
+- No `/health` endpoint (load balancers and monitors need it)
+- No correlation ID middleware (can't trace a request across log lines)
 - React: `key={index}` on lists, stale `useEffect` deps, direct state mutation, `dangerouslySetInnerHTML`
 
 **Architecture smells**
@@ -182,6 +187,12 @@ Runs scan commands first (grep, git log, npm audit), then a manual pattern pass.
 - Deep nesting (3+ levels)
 - Circular imports
 - Config scattered instead of centrally loaded
+
+**Dependency hygiene**
+- Packages declared in `package.json` but not imported anywhere (dead weight)
+- GPL/AGPL licensed packages in a commercial project (legal risk)
+- No lockfile committed (`package-lock.json`, `poetry.lock`, etc.)
+- Floating versions (`*` or `latest`) on production dependencies
 
 **LOW — tech debt**
 - Inconsistent naming conventions
@@ -280,6 +291,57 @@ Agent: Before implementing, let me ask:
 [The spec includes: acceptance criteria, NFRs, API contract shape, edge cases, rollback plan]
 [Only after you approve the spec does it write a single line of code]
 ```
+
+---
+
+## What the observability mode does
+
+Walks through four areas for any service going to production:
+
+- **Log levels** — defines when to use ERROR vs WARN vs INFO vs DEBUG, with rules against logging PII at any level
+- **Structured logging** — replaces `console.log('thing happened')` with machine-parseable JSON logs your monitoring stack can filter, aggregate, and alert on
+- **Correlation IDs** — adds middleware that stamps every request with a trace ID and attaches it to every downstream log line, so you can reconstruct exactly what happened for one user
+- **Health check endpoint** — `/health` that returns 200 only when all critical dependencies (DB, Redis, etc.) are reachable, and 503 otherwise — required by load balancers and uptime monitors
+- **Error tracking** — Sentry/Bugsnag initialization with PII scrubbing so errors surface automatically without waiting for a user to report them
+
+---
+
+## What the testing mode does
+
+- **Assess first** — counts test files vs source files, identifies which source files have zero coverage, checks whether a test runner is configured and whether coverage thresholds are enforced in CI
+- **TDD gate** — refuses to implement new business logic without writing a failing test first; defines exactly when tests-first isn't practical (spikes, layout tweaks, config)
+- **Unit test patterns** — one assertion per test, test names that read as sentences, always test error paths, mock only at the boundary (never inside business logic)
+- **Integration test patterns** — hits a real database, wraps each test in a transaction and rolls back after so tests never pollute each other, covers happy path + 400 + 401 + 404 + 409
+- **Test quality checklist** — catches false-green tests, tests with no assertions, `sleep()` in tests, setup longer than the test itself
+
+---
+
+## What the performance mode does
+
+- **Database index analysis** — queries `pg_stat_user_tables` to find sequential scans on large tables, checks every WHERE/JOIN ON/ORDER BY clause for missing indexes, and validates with `EXPLAIN ANALYZE` before shipping
+- **Caching** — identifies repeated DB queries and expensive operations called on every request, provides a cache-aside pattern with Redis including TTL discipline and invalidation strategy
+- **Bundle size** — detects whole-library imports (full lodash, all of moment), replaces with named imports or native APIs, lazy-loads routes and heavy components
+- **Memory leak detection** — finds event listeners added without removal, `setInterval` without `clearInterval`, and React `useEffect` subscriptions missing cleanup returns
+- **Pagination** — finds every list endpoint returning unbounded results and applies cursor-based pagination with a hard max on the `limit` parameter
+
+---
+
+## What the API design mode does
+
+- **HTTP status codes** — enforces correct semantics: 201 for creates, 204 for deletes, 400 for client errors, 404 for not-found, 409 for conflicts, 422 for validation failures — flags the common `200` for everything anti-pattern
+- **Consistent error shape** — every endpoint returns `{ error: "MACHINE_CODE", message: "human text" }` through a centralised error handler, never ad-hoc `{ message }` or `{ errors }` per route
+- **Idempotency** — payment endpoints, order creation, and any operation with real-world side effects get an `Idempotency-Key` header check that prevents duplicate records on network retries
+- **Versioning** — URL path versioning (`/api/v1`, `/api/v2`), `Deprecation: true` + `Sunset: <date>` headers on old versions, keep v(n-1) running for 3 months after v(n) ships
+- **OpenAPI documentation** — generates specs from code (zod-to-openapi, tsoa, FastAPI auto-docs) rather than maintaining them by hand where they inevitably diverge
+
+---
+
+## What the dependency hygiene mode does
+
+- **Unused package detection** — runs `depcheck` / `knip` to find packages declared in `package.json` but never imported, and packages imported but missing from `package.json`
+- **License scan** — runs `license-checker` and flags any GPL/AGPL/SSPL dependency in a commercial project before it creates a legal obligation to open-source your codebase
+- **Lockfile discipline** — checks the lockfile is committed, identifies floating `*` / `latest` versions, and sets rules for which packages need exact pinning (auth libraries, crypto, validators)
+- **Native platform replacements** — maps common bloated packages to their zero-cost native equivalents: lodash → native array methods, moment → `Intl.DateTimeFormat`, uuid → `crypto.randomUUID()`, node-fetch → global `fetch`, mkdirp → `fs.mkdir({ recursive: true })`
 
 ---
 
