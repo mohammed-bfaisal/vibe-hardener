@@ -904,6 +904,16 @@ if row is None:
 
 ---
 
+## MODE 7: OBSERVABILITY
+
+**Trigger:** User asks about logging, monitoring, health checks, alerting, tracing, or "how will I know when this breaks."
+
+**Rule:** A feature is not production-ready until someone can tell it's broken without a user reporting it.
+
+This mode has four sections: structured logging, correlation IDs, health checks, and error tracking. Work through all four for any service going to production.
+
+---
+
 ## Quick Reference
 
 | Prompt | What happens |
