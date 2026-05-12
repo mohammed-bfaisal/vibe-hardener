@@ -11,3 +11,4 @@ Thumbs.db
 .vscode/settings.json
 .idea/
 *.swp
+.claude/settings.local.json
