@@ -2051,6 +2051,99 @@ grep -E '"[^"]+": "\^|~' package.json | head -20
 - `devDependencies` are lower risk — `^` is fine there
 - Update dependencies on a schedule (weekly via Dependabot or Renovate), not reactively
 
+### 11.4 Native Platform Replacements
+
+Before reaching for a package, check whether the runtime already does it. Every dependency you avoid is one fewer supply chain risk, one fewer CVE to monitor, and zero bundle cost.
+
+**Quick reference — common packages with native alternatives:**
+
+```
+Package              Replace with                              Notes
+─────────────────────────────────────────────────────────────────────────────
+lodash               Native array/object methods               Built into JS since ES2015+
+moment               Intl.DateTimeFormat + date-fns (if needed) moment is 67KB, deprecated
+request              fetch (Node 18+)                          Built-in, no install needed
+node-fetch           fetch (Node 18+)                          Not needed post-Node 18
+cross-fetch          fetch (Node 18+)                          Same as above
+uuid                 crypto.randomUUID()                       Built-in Node 16+, all browsers
+mkdirp               fs.mkdir(path, { recursive: true })       Built-in Node 12+
+rimraf               fs.rm(path, { recursive: true, force: true }) Built-in Node 14.14+
+is-array / is-string Array.isArray() / typeof x === 'string'  Single-line check
+left-pad             String.prototype.padStart()               Built-in since ES2017
+path-exists          fs.existsSync() / fs.access()             Built-in
+```
+
+```typescript
+// ❌ WRONG — lodash for simple operations
+import _ from 'lodash';
+const unique = _.uniq(items);
+const flat = _.flatten(nested);
+const grouped = _.groupBy(orders, 'status');
+
+// ✅ CORRECT — native (zero bundle cost)
+const unique = [...new Set(items)];
+const flat = nested.flat();
+const grouped = Object.groupBy(orders, o => o.status); // ES2024, or use reduce
+
+// ❌ WRONG — moment for date formatting
+import moment from 'moment';
+const formatted = moment(date).format('YYYY-MM-DD');
+const diffDays = moment(end).diff(moment(start), 'days');
+
+// ✅ CORRECT — Intl.DateTimeFormat (built-in) or date-fns for complex cases
+const formatted = new Intl.DateTimeFormat('en-CA').format(date); // outputs YYYY-MM-DD
+const diffDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
+
+// ❌ WRONG — uuid package
+import { v4 as uuidv4 } from 'uuid';
+const id = uuidv4();
+
+// ✅ CORRECT — native
+const id = crypto.randomUUID(); // Node 16+, all modern browsers
+
+// ❌ WRONG — node-fetch (not needed in Node 18+)
+import fetch from 'node-fetch';
+const res = await fetch(url);
+
+// ✅ CORRECT — global fetch built in
+const res = await fetch(url);
+
+// ❌ WRONG — mkdirp package
+import mkdirp from 'mkdirp';
+await mkdirp('/some/nested/path');
+
+// ✅ CORRECT — fs.mkdir recursive
+import { mkdir } from 'fs/promises';
+await mkdir('/some/nested/path', { recursive: true });
+```
+
+```python
+# ❌ WRONG — requests in an async app (blocking)
+import requests
+response = requests.get(url)
+
+# ✅ CORRECT — httpx (sync + async) or aiohttp (async-only)
+import httpx
+async with httpx.AsyncClient() as client:
+    response = await client.get(url)
+
+# ❌ WRONG — python-dateutil for basic arithmetic
+from dateutil.relativedelta import relativedelta
+next_month = today + relativedelta(months=1)
+
+# ✅ CORRECT — calendar module from stdlib for month-aware math
+import calendar
+from datetime import date
+days_in_month = calendar.monthrange(today.year, today.month)[1]
+```
+
+**Decision rule before installing a package:**
+1. Does Node/Python version you're targeting support it natively? Check first.
+2. Is it a one-function package (`is-odd`, `left-pad`, `is-array`)? Inline it.
+3. Is it doing only one thing you use? Write the one thing.
+4. Check `bundlephobia.com` for size impact (frontend packages only)
+5. Check `npm info <pkg> time.modified` — packages unmaintained for 3+ years with CVEs should be replaced
+
 ---
 
 ## Quick Reference
