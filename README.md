@@ -259,6 +259,19 @@ vibe-hardener/
 
 ---
 
+## Limitations
+
+**What this does:** Gives your agent better instructions. Shifts the probability of good output. Catches the patterns it can.
+
+**What this doesn't do:**
+
+- It doesn't guarantee production-safe output. An agent can read "never hardcode secrets" and still hardcode one in a long session with context drift. Review diffs — always.
+- The audit is pattern-based, not semantic. It finds secrets named `api_key`. It won't find one named `auth_token_internal`. Use a dedicated secrets scanner (truffleHog, gitleaks) for anything that matters.
+- GitHub Copilot reads the instructions file as passive guidance — it doesn't support invocable modes. The experience is weaker there than in Claude Code or Cursor.
+- Nothing here replaces a human security review for anything handling money, PII, or authentication.
+
+---
+
 ## Philosophy
 
 > "AI agents are exceptional at pattern completion. They are not trying to read your mind about security, maintainability, or architecture. That's on you — unless you give them the context."
