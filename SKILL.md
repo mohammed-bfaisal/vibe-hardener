@@ -450,6 +450,10 @@ pip-audit
 grep -rn "fetch(\|axios.get(\|requests.get(" . --include="*.ts" --include="*.js" --include="*.py" \
   | grep -v "config\.\|env\.\|BASE_URL\|process.env" | head -20
 
+# Cookie flags — missing httpOnly/secure/sameSite
+grep -rn "res.cookie\|setCookie\|set-cookie" . --include="*.ts" --include="*.js" \
+  | grep -v "httpOnly\|HttpOnly" | head -20
+
 # Path traversal: user input used in file paths
 grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
   --include="*.ts" --include="*.js" | grep "req\.\|param\|query\|body" | head -20
@@ -496,6 +500,8 @@ grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
 □ HTTPS enforced in production (not just available)
 □ Dependency lockfile committed and up to date
 □ No hardcoded fallback credentials for "development convenience"
+□ Cookies set with httpOnly=true, secure=true, sameSite='strict' (or 'lax' minimum)
+□ Session cookies not accessible from JavaScript (httpOnly prevents XSS token theft)
 ```
 
 ### Output Format
