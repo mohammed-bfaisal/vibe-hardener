@@ -321,7 +321,43 @@ interface CreateUserInput {
 async function createUser(input: CreateUserInput): Promise<User> { ... }
 ```
 
-**6. Flatten Promise Chains to async/await**
+**6. Extract Database Access into a Repository Layer**
+
+```typescript
+// BEFORE (vibe — raw queries scattered across route handlers and services)
+app.get('/users/:id', async (req, res) => {
+  const user = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+  res.json(user.rows[0]);
+});
+
+// AFTER (production — queries isolated, testable, typed)
+// repositories/userRepository.ts
+export const userRepository = {
+  findById: async (id: string): Promise<User | null> => {
+    const result = await db.query<User>(
+      'SELECT id, email, name, role, created_at FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+  create: async (input: CreateUserInput): Promise<User> => {
+    const result = await db.query<User>(
+      'INSERT INTO users (email, name, role) VALUES ($1, $2, $3) RETURNING id, email, name, role, created_at',
+      [input.email, input.name, input.role]
+    );
+    return result.rows[0];
+  },
+};
+
+// routes/users.ts
+app.get('/users/:id', async (req, res) => {
+  const user = await userRepository.findById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true, data: user });
+});
+```
+
+**7. Flatten Promise Chains to async/await**
 
 ```typescript
 // BEFORE (vibe — hard to follow, error handling fragile)
