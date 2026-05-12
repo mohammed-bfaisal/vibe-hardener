@@ -65,6 +65,15 @@ grep -rn "process\.exit(" src/ --include="*.ts" --include="*.js" 2>/dev/null || 
 # Synchronous file I/O in source (blocking in async context)
 grep -rn "readFileSync\|writeFileSync\|existsSync\|mkdirSync" src/ \
   --include="*.ts" --include="*.js" 2>/dev/null || true
+
+# God files (files over 300 lines — single-responsibility violation)
+find . -name "*.ts" -o -name "*.js" -o -name "*.py" \
+  | grep -v node_modules | grep -v ".test." | grep -v ".spec." \
+  | xargs wc -l 2>/dev/null | sort -rn | head -20
+
+# Deep nesting — more than 3 levels of indentation blocks
+grep -rn "^\s\{12,\}" src/ --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "^\s*\/\/" | head -20
 ```
 
 ### Step 2 — Manual Pattern Scan
@@ -110,8 +119,9 @@ Flag if you see:
 - HTTP response objects in service/business logic layer
 - Config loaded inline at call sites instead of centrally
 - No separation between external API calls and business logic
-- God objects / files doing 5+ unrelated things
+- God objects / files doing 5+ unrelated things (flag files over 300 lines in src/)
 - Circular imports
+- Deeply nested callbacks or conditionals (more than 3 levels) — extract to named functions
 
 ### Step 4 — Output the Report
 
