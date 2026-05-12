@@ -5,31 +5,6 @@ description: >
   Covers audit, refactor, security review, spec-driven development, and pre-PR review.
   Works with any stack, any language, any agent.
   Invoke with: "use vibe-hardener to [audit/refactor/security-review/spec/review]"
-  Or use slash commands: /vibe-hardener [mode]
-triggers:
-  - "audit this codebase"
-  - "make this production ready"
-  - "refactor"
-  - "security review"
-  - "code review"
-  - "pre-pr review"
-  - "spec"
-  - "de-vibe"
-  - "clean up this code"
-  - "vibe-hardener"
-  - "senior engineer review"
-compatible_agents:
-  - claude-code
-  - codex-cli
-  - cursor
-  - windsurf
-  - github-copilot
-  - gemini-cli
-  - kiro
-  - generic
-version: "1.0"
-author: "mbf"
-license: MIT
 ---
 
 # vibe-hardener
@@ -48,7 +23,9 @@ This skill has six modes. Read the user's intent and activate the correct one. Y
 
 ### Step 1 — Run These Scans First
 
-Suggest or run the following commands and use results to ground your report:
+**If you have shell access**, run the commands below and use results to ground your report.
+
+**If you do not have shell access** (e.g. Copilot inline, Cursor chat-only), perform Step 2 manually by reading each file in scope. State explicitly which scans you could not run and why, so the developer can run them manually.
 
 ```bash
 # Hardcoded secrets
@@ -75,6 +52,67 @@ npm audit --audit-level=high 2>/dev/null || true
 
 # pip audit (Python projects)
 pip-audit 2>/dev/null || safety check 2>/dev/null || true
+
+# Unhandled promise rejections (.then() without .catch())
+grep -rn "\.then(" . --include="*.ts" --include="*.js" --include="*.tsx" \
+  | grep -v "\.catch\|await\|// "
+
+# Missing await on async calls (async function called without await)
+grep -rn "^\s*[a-zA-Z]\+(" . --include="*.ts" --include="*.js" \
+  | grep -v "await\|return\|const\|let\|var\|=\|if\|while\|\/\/"
+
+# process.exit() in non-CLI code
+grep -rn "process\.exit(" src/ --include="*.ts" --include="*.js" 2>/dev/null || true
+
+# Observability gaps — console.log used instead of structured logger
+grep -rn "console\.\(log\|warn\|error\|info\)" src/ \
+  --include="*.ts" --include="*.js" --include="*.tsx" 2>/dev/null | grep -v "\.test\.\|\.spec\."
+
+# Missing health endpoint
+grep -rn "\/health\|healthCheck\|health_check" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
+# Missing correlation ID middleware
+grep -rn "correlationId\|correlation_id\|x-correlation-id\|x-request-id" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
+# Missing error tracker initialization
+grep -rn "Sentry\|sentry_sdk\|Bugsnag\|Rollbar\|@sentry" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
+# Synchronous file I/O in source (blocking in async context)
+grep -rn "readFileSync\|writeFileSync\|existsSync\|mkdirSync" src/ \
+  --include="*.ts" --include="*.js" 2>/dev/null || true
+
+# React: key={index} anti-pattern
+grep -rn "key={index}\|key={i}\|key={idx}" src/ --include="*.tsx" --include="*.jsx" 2>/dev/null || true
+
+# React: dangerouslySetInnerHTML usage
+grep -rn "dangerouslySetInnerHTML" src/ --include="*.tsx" --include="*.jsx" 2>/dev/null || true
+
+# God files (files over 300 lines — single-responsibility violation)
+find . -name "*.ts" -o -name "*.js" -o -name "*.py" \
+  | grep -v node_modules | grep -v ".test." | grep -v ".spec." \
+  | xargs wc -l 2>/dev/null | sort -rn | head -20
+
+# Deep nesting — more than 3 levels of indentation blocks
+grep -rn "^\s\{12,\}" src/ --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "^\s*\/\/" | head -20
+
+# Dependency hygiene — unused packages
+npx depcheck 2>/dev/null | head -20 || true
+
+# Dependency hygiene — unused exports and imports (TS/JS)
+npx knip 2>/dev/null | head -20 || true
+
+# License scan — flag GPL/AGPL
+npx license-checker --summary 2>/dev/null | head -20 || true
+
+# Lockfile committed?
+git ls-files | grep -E "package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock"
+
+# Floating versions in package.json
+grep -E '"[^"]+": "(\*|latest|\^[0-9]|~[0-9])' package.json 2>/dev/null | head -10 || true
 ```
 
 ### Step 2 — Manual Pattern Scan
@@ -89,6 +127,8 @@ Check every file in scope for:
 - SQL/NoSQL queries using string concatenation with user input
 - Packages that may not exist (AI hallucinated dependencies)
 - `eval()` or `exec()` on user-supplied input
+- Floating promises: `.then()` chain with no `.catch()` and no `await`
+- `process.exit()` called outside of a CLI entry point
 
 **🟡 MEDIUM — Fix this sprint**
 - `any` / untyped in TypeScript without justification comment
@@ -100,6 +140,18 @@ Check every file in scope for:
 - User endpoint with no input validation
 - Broad exception catch: `except Exception:` / `catch (e: any)` with no specificity
 - Missing error handling on async operations
+- `readFileSync` / `writeFileSync` used in request handlers (blocks the event loop)
+- External HTTP calls with no timeout configured (hangs forever on unresponsive upstream)
+- List endpoints returning unbounded results with no `LIMIT` / `limit` parameter (pagination missing)
+- Event listeners added without corresponding cleanup / removal (memory leak)
+
+**🟡 MEDIUM — React-specific (skip if project has no React)**
+- `key={index}` on list items — defeats reconciliation, causes subtle UI bugs
+- `useEffect` with an empty `[]` dependency array that references props or state (stale closure)
+- Data fetching directly inside a component body instead of a custom hook or data layer
+- State mutations: `array.push()`, `object.key = value` directly on state variables
+- Event handlers defined inline in JSX on every render without `useCallback`
+- `dangerouslySetInnerHTML` without sanitizing content first
 
 **🟢 LOW — Tech debt queue**
 - Single-letter variable names outside loop counters
@@ -116,8 +168,9 @@ Flag if you see:
 - HTTP response objects in service/business logic layer
 - Config loaded inline at call sites instead of centrally
 - No separation between external API calls and business logic
-- God objects / files doing 5+ unrelated things
+- God objects / files doing 5+ unrelated things (flag files over 300 lines in src/)
 - Circular imports
+- Deeply nested callbacks or conditionals (more than 3 levels) — extract to named functions
 
 ### Step 4 — Output the Report
 
@@ -195,7 +248,14 @@ const res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
 # Python equivalent
 # config/settings.py
 import os
-LLM_API_KEY = os.environ.get('LLM_API_KEY') or (_ for _ in ()).throw(ValueError('LLM_API_KEY not set'))
+
+def required(key: str) -> str:
+    value = os.environ.get(key)
+    if not value:
+        raise ValueError(f"Required env var missing: {key}")
+    return value
+
+LLM_API_KEY: str = required('LLM_API_KEY')
 ```
 
 **2. Add Error Boundaries**
@@ -294,6 +354,91 @@ interface CreateUserInput {
 async function createUser(input: CreateUserInput): Promise<User> { ... }
 ```
 
+**6. Extract Database Access into a Repository Layer**
+
+```typescript
+// BEFORE (vibe — raw queries scattered across route handlers and services)
+app.get('/users/:id', async (req, res) => {
+  const user = await db.query('SELECT * FROM users WHERE id = $1', [req.params.id]);
+  res.json(user.rows[0]);
+});
+
+// AFTER (production — queries isolated, testable, typed)
+// repositories/userRepository.ts
+export const userRepository = {
+  findById: async (id: string): Promise<User | null> => {
+    const result = await db.query<User>(
+      'SELECT id, email, name, role, created_at FROM users WHERE id = $1',
+      [id]
+    );
+    return result.rows[0] ?? null;
+  },
+  create: async (input: CreateUserInput): Promise<User> => {
+    const result = await db.query<User>(
+      'INSERT INTO users (email, name, role) VALUES ($1, $2, $3) RETURNING id, email, name, role, created_at',
+      [input.email, input.name, input.role]
+    );
+    return result.rows[0];
+  },
+};
+
+// routes/users.ts
+app.get('/users/:id', async (req, res) => {
+  const user = await userRepository.findById(req.params.id);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  res.json({ success: true, data: user });
+});
+```
+
+**7. Flatten Promise Chains to async/await**
+
+```typescript
+// BEFORE (vibe — hard to follow, error handling fragile)
+function loadUserData(userId: string) {
+  return fetchUser(userId)
+    .then(user => {
+      return fetchPermissions(user.id)
+        .then(permissions => {
+          return { user, permissions };
+        });
+    })
+    .catch(err => {
+      console.log(err);
+    });
+}
+
+// AFTER (production — linear, typed, explicit error handling)
+async function loadUserData(userId: string): Promise<{ user: User; permissions: Permission[] }> {
+  try {
+    const user = await fetchUser(userId);
+    const permissions = await fetchPermissions(user.id);
+    return { user, permissions };
+  } catch (error) {
+    logger.error('loadUserData failed', { userId, error });
+    throw new Error(`Failed to load user data: ${error instanceof Error ? error.message : 'unknown'}`);
+  }
+}
+```
+
+```python
+# Python equivalent — avoid callback-style patterns
+# BEFORE
+def load_user_data(user_id: str):
+    user = fetch_user(user_id)  # no error handling
+    permissions = fetch_permissions(user.id)
+    return {"user": user, "permissions": permissions}
+
+# AFTER
+async def load_user_data(user_id: str) -> dict:
+    try:
+        user = await fetch_user(user_id)
+        permissions = await fetch_permissions(user.id)
+        return {"user": user, "permissions": permissions}
+    except FetchError as e:
+        logger.error("load_user_data failed", extra={"user_id": user_id, "error": str(e)})
+        raise RuntimeError(f"Failed to load user data: {e}") from e
+```
+
 ### What NOT to Refactor
 
 Do not:
@@ -333,6 +478,24 @@ npm audit --audit-level=high
 
 # Python: pip-audit or safety
 pip-audit
+
+# SSRF: user-controlled URLs passed to fetch/http/requests
+grep -rn "fetch(\|axios.get(\|requests.get(" . --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "config\.\|env\.\|BASE_URL\|process.env" | head -20
+
+# CSRF protection presence (csurf, csrf-csrf, or equivalent)
+grep -rn "csrf\|csurf\|doubleCsrf" . --include="*.ts" --include="*.js" 2>/dev/null | head -10
+
+# Content-Security-Policy header
+grep -rn "Content-Security-Policy\|contentSecurityPolicy" . --include="*.ts" --include="*.js" 2>/dev/null | head -5
+
+# Cookie flags — missing httpOnly/secure/sameSite
+grep -rn "res.cookie\|setCookie\|set-cookie" . --include="*.ts" --include="*.js" \
+  | grep -v "httpOnly\|HttpOnly" | head -20
+
+# Path traversal: user input used in file paths
+grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
+  --include="*.ts" --include="*.js" | grep "req\.\|param\|query\|body" | head -20
 ```
 
 ### The Checklist
@@ -348,6 +511,8 @@ pip-audit
 □ Auth enforced on server side — not just client side
 □ No SQL/NoSQL queries using string concatenation with user input
 □ No eval() or exec() on user input
+□ No user-controlled URLs passed directly to fetch/http/requests (SSRF)
+□ File path operations do not use unvalidated user input (path traversal)
 ```
 
 **🔴 HIGH — Fix before merge**
@@ -357,12 +522,15 @@ pip-audit
 □ Parameterized queries / ORM used for all DB operations
 □ Authentication middleware applied to all protected routes
 □ Authorization checked in service layer (not only at route level)
+□ CSRF protection on all state-mutating endpoints (POST/PUT/PATCH/DELETE) that use cookie auth
+□ Content-Security-Policy header configured — prevents XSS escalation even if injection occurs
 □ Error messages don't expose stack traces or internal paths to client
 □ No tokens, passwords, or PII in log statements
 □ All new npm/pip packages verified to exist (not AI hallucinated)
 □ npm audit / pip-audit — no new critical or high CVEs introduced
 □ Rate limiting on auth endpoints (login, register, password reset)
 □ LLM prompts: user-supplied content sanitized, not injected directly
+□ Auth token/secret comparisons use timing-safe equality (crypto.timingSafeEqual / hmac.compare_digest), not ===  / ==
 ```
 
 **🟡 MEDIUM — Fix this sprint**
@@ -374,6 +542,8 @@ pip-audit
 □ HTTPS enforced in production (not just available)
 □ Dependency lockfile committed and up to date
 □ No hardcoded fallback credentials for "development convenience"
+□ Cookies set with httpOnly=true, secure=true, sameSite='strict' (or 'lax' minimum)
+□ Session cookies not accessible from JavaScript (httpOnly prevents XSS token theft)
 ```
 
 ### Output Format
@@ -418,7 +588,9 @@ Ask these questions one at a time. Do not ask all at once. Adapt based on answer
 3. How do we know it's done? Give me 3-5 testable acceptance criteria.
 4. What must this explicitly NOT do? (Scope boundary)
 5. What existing code does this touch or depend on?
-6. Any performance, security, or integration constraints?
+6. Any performance targets? (latency, throughput, scale)
+7. Any security, compliance, or integration constraints?
+8. If this ships and breaks something, how do we roll it back?
 
 ### Step 2 — Generate the Spec
 
@@ -444,8 +616,12 @@ Output this file to `specs/YYYY-MM-DD-feature-name.md`:
 - [Explicitly excluded thing 1]
 - [Explicitly excluded thing 2]
 
+## Non-Functional Requirements
+- **Performance:** [p95 latency target, throughput, or "none specified"]
+- **Availability:** [uptime requirement or "none specified"]
+- **Scale:** [expected request volume / data size or "none specified"]
+
 ## Technical Constraints
-- [Performance requirement if any]
 - [Integration requirement if any]
 - [Security requirement if any]
 
@@ -453,8 +629,24 @@ Output this file to `specs/YYYY-MM-DD-feature-name.md`:
 - [Edge case 1] → [Expected behavior]
 - [Edge case 2] → [Expected behavior]
 
+## API Contract (if this feature adds or changes endpoints)
+```
+METHOD /path
+Request:  { field: type, field: type }
+Response: { field: type, field: type }
+Errors:   400 [reason], 401 [reason], 404 [reason]
+```
+
 ## Data / API Changes
-[Schema changes, new endpoints, new env vars — or "None"]
+- Schema changes: [table/collection, migration needed: yes/no]
+- New env vars: [VAR_NAME=description, or "None"]
+- Breaking changes: [yes/no — if yes, migration plan required]
+
+## Rollback Plan
+[How to revert this feature if it causes problems in production]
+- Feature flag: [yes/no]
+- DB migration reversible: [yes/no — if no, explain why it is safe]
+- Rollback steps: [ordered list, or "revert commit + redeploy"]
 ```
 
 ### Step 3 — Gate on Approval
@@ -499,6 +691,8 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ Config not hardcoded — uses environment variables
 □ Separation of concerns preserved
 □ No new circular dependencies introduced
+□ Any new env vars documented in .env.example with description
+□ Any new env vars added to deployment platform config (Vercel / Railway / Fly.io / etc.)
 ```
 
 **Security**
@@ -507,6 +701,65 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ Input validation on any new user endpoints
 □ Auth checked on any new protected routes
 □ npm audit: no new critical/high vulnerabilities
+```
+
+**API Design**
+```
+□ New endpoints use correct HTTP status codes (201 for creates, 204 for deletes, 4xx for client errors)
+□ Error responses use the project's standard shape (not ad-hoc { message } or { error })
+□ New list endpoints have pagination (limit + cursor or offset)
+□ Endpoints that create resources or have side effects have idempotency key support
+□ Breaking changes to existing endpoints: new API version created, old version not removed yet
+□ New public endpoints documented in OpenAPI spec or equivalent
+```
+
+**Performance**
+```
+□ No new list endpoints without pagination (limit parameter + max cap)
+□ No new queries on columns that are not indexed (check with EXPLAIN ANALYZE)
+□ No new event listeners added without cleanup
+□ No new setInterval without clearInterval
+□ No new whole-library imports on frontend (check bundle impact)
+□ No new unbounded in-memory collections (Maps/Sets with no eviction)
+```
+
+**Testing**
+```
+□ New business logic has unit tests covering happy path and error paths
+□ New API endpoints have integration tests covering: 200/201, 400, 401/403, 404
+□ Tests pass locally: npm test / pytest
+□ No tests skipped or marked .only / .skip without explanation
+□ Coverage did not decrease (run: npx jest --coverage or pytest --cov)
+□ Test names are descriptive — a failing test name explains what broke
+```
+
+**Observability**
+```
+□ No raw console.log / print() added — structured logger used throughout
+□ New code paths log meaningful INFO events (not just errors)
+□ Every new error path logs with enough context to debug without reproducing
+□ No PII logged (passwords, tokens, card numbers, SSNs, emails unless explicitly required)
+□ New service or significant feature: /health endpoint checks any new dependency added
+□ New service: error tracker initialized and SENTRY_DSN (or equivalent) in .env.example
+```
+
+**Breaking Changes**
+```
+□ No exported function/type signatures changed in a backwards-incompatible way
+  (check with: git diff main...HEAD -- "*.ts" | grep "^-export")
+□ If a public API changed: callers identified and updated, or versioned endpoint added
+□ Database migration file present if schema changed
+□ No removal of existing required env vars without documentation update
+```
+
+**Dependencies**
+```
+□ No new packages added without justification (could a native API do this?)
+□ Any new package: license checked — no GPL/AGPL in commercial projects
+□ Any new package: `npm audit` / `pip-audit` shows no new critical/high CVEs
+□ Lockfile committed and up to date (package-lock.json / poetry.lock / etc.)
+□ New packages in correct section: runtime deps in dependencies, build/test tools in devDependencies
+□ No floating versions (*  or latest) for production dependencies
 ```
 
 **Git**
@@ -545,6 +798,9 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 ### Universal Rules (Language-Agnostic)
 
 - **Never hardcode configuration.** Any value that differs between environments goes in env/config.
+- **Never use console.log in production code.** Use a structured logger. `console.log` is not searchable, not filterable, and not alertable.
+- **Every significant operation must be observable.** If something goes wrong in production and you can't diagnose it from logs alone, the code isn't done.
+- **New business logic requires tests.** A function with branching logic and no test is a future bug waiting for the right conditions.
 - **Never swallow errors silently.** Every catch must log with context or rethrow with context. An empty catch block is always a bug.
 - **Never accept unvalidated user input.** Validate at the boundary before it reaches business logic.
 - **Fail fast on missing config.** At startup, not silently in production at 3am.
@@ -660,18 +916,1276 @@ API_KEY: str = required("API_KEY")
 PORT: int = int(os.environ.get("PORT", "3000"))
 ```
 
+### Go Standards
+
+```go
+// Constants: ALL_CAPS
+const MaxRetries = 3
+
+// Variables and functions: camelCase
+isAuthenticated := true
+
+// Types and structs: PascalCase
+type UserRepository struct { ... }
+
+// Errors: always check, never ignore
+user, err := repo.FindByID(ctx, userID)
+if err != nil {
+    return fmt.Errorf("FindByID %s: %w", userID, err)
+}
+
+// Context: always first parameter on functions that do I/O
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*User, error)
+
+// ❌ WRONG — ignoring error
+user, _ := repo.FindByID(ctx, userID)
+
+// ❌ WRONG — no context
+func findUser(id string) (*User, error)
+```
+
+```
+Constants:   PascalCase (exported) or camelCase (unexported)
+Variables:   camelCase
+Types:       PascalCase
+Files:       snake_case.go
+Errors:      wrap with fmt.Errorf("context: %w", err) — never discard
+Context:     first arg on every I/O function, always name it ctx
+```
+
+### Database Query Standards
+
+**Always:**
+- Use parameterized queries or ORM — never string concatenation with user input
+- Select explicit columns — never `SELECT *` in production code
+- Use transactions for operations that must be atomic
+- Handle the case where a row is not found (null check at the query boundary)
+- Set a query timeout — never let a query run unbounded
+
+```typescript
+// ❌ WRONG
+const user = await db.query(`SELECT * FROM users WHERE id = '${userId}'`);
+
+// ✅ CORRECT
+const user = await db.query<User>(
+  'SELECT id, email, name, role FROM users WHERE id = $1',
+  [userId]
+);
+if (!user.rows[0]) throw new NotFoundError(`User ${userId} not found`);
+```
+
+```python
+# ❌ WRONG
+cursor.execute(f"SELECT * FROM users WHERE id = '{user_id}'")
+
+# ✅ CORRECT
+cursor.execute(
+    "SELECT id, email, name, role FROM users WHERE id = %s",
+    (user_id,)
+)
+row = cursor.fetchone()
+if row is None:
+    raise NotFoundError(f"User {user_id} not found")
+```
+
+---
+
+## MODE 7: OBSERVABILITY
+
+**Trigger:** User asks about logging, monitoring, health checks, alerting, tracing, or "how will I know when this breaks."
+
+**Rule:** A feature is not production-ready until someone can tell it's broken without a user reporting it.
+
+This mode has four sections: structured logging, correlation IDs, health checks, and error tracking. Work through all four for any service going to production.
+
+### 7.1 Log Levels — Use Them Correctly
+
+```
+ERROR   Something broke and requires immediate attention. Wakes people up.
+        Use for: unhandled exceptions, failed external calls, data corruption
+        Never use for: expected validation failures, 404s
+
+WARN    Something unexpected happened but the system recovered.
+        Use for: retried operations, deprecated API calls, slow queries, rate limits hit
+        Never use for: normal business events
+
+INFO    A significant business event completed successfully.
+        Use for: request received, order placed, user created, job finished
+        Not for every function call — only meaningful state transitions
+
+DEBUG   Data useful for diagnosing a specific problem. Off in production.
+        Use for: intermediate values, branch decisions, full request/response bodies
+```
+
+**Rules:**
+- Every ERROR log must include enough context to reproduce the problem without asking the user
+- Never log at ERROR for something you handled gracefully — that's WARN or INFO
+- Never log sensitive data (passwords, tokens, PII, card numbers) at any level
+- Production log level: INFO minimum. DEBUG only in dev or via feature flag
+
+### 7.2 Structured Log Format
+
+Every log entry must be machine-parseable JSON. `console.log('user created')` is useless in production — you cannot filter, aggregate, or alert on it.
+
+```typescript
+// ❌ WRONG — unstructured, unsearchable
+console.log('Payment failed for user ' + userId);
+console.error(error);
+
+// ✅ CORRECT — structured, searchable, alertable
+import { logger } from '../lib/logger';
+
+logger.error('Payment processing failed', {
+  userId,
+  orderId,
+  amount,
+  currency,
+  provider: 'stripe',
+  error: error instanceof Error ? error.message : String(error),
+  // never log: cardNumber, cvv, token, password
+});
+
+logger.info('Order placed', {
+  userId,
+  orderId,
+  itemCount: items.length,
+  totalCents,
+  durationMs: Date.now() - startTime,
+});
+```
+
+```python
+# ❌ WRONG
+print(f"Payment failed for user {user_id}: {error}")
+
+# ✅ CORRECT
+import logging
+import json
+
+logger = logging.getLogger(__name__)
+
+logger.error("Payment processing failed", extra={
+    "user_id": user_id,
+    "order_id": order_id,
+    "amount": amount,
+    "provider": "stripe",
+    "error": str(error),
+})
+
+logger.info("Order placed", extra={
+    "user_id": user_id,
+    "order_id": order_id,
+    "item_count": len(items),
+    "total_cents": total_cents,
+    "duration_ms": int((time.time() - start_time) * 1000),
+})
+```
+
+**Minimum fields every log entry must include:**
+- `timestamp` (ISO 8601, set by logger not by hand)
+- `level`
+- `message` (static string — not interpolated, so it's groupable)
+- `service` / `component` (where in the codebase)
+- Relevant IDs: `userId`, `requestId`, `orderId` — whatever makes this event findable
+
+### 7.3 Correlation IDs (Request Tracing)
+
+Without a correlation ID, you cannot trace a single user request across multiple log lines. Add it once at the entry point and attach it to every log downstream.
+
+```typescript
+// middleware/correlationId.ts
+import { randomUUID } from 'crypto';
+import { Request, Response, NextFunction } from 'express';
+
+export function correlationIdMiddleware(req: Request, res: Response, next: NextFunction) {
+  const correlationId = (req.headers['x-correlation-id'] as string) ?? randomUUID();
+  req.correlationId = correlationId;
+  res.setHeader('x-correlation-id', correlationId);
+  next();
+}
+
+// Usage in every downstream log:
+logger.info('Processing payment', {
+  correlationId: req.correlationId,
+  userId: req.user.id,
+});
+
+// Pass it to outgoing HTTP calls too:
+await fetch(upstreamUrl, {
+  headers: { 'x-correlation-id': req.correlationId },
+});
+```
+
+```python
+# middleware — FastAPI / Starlette example
+import uuid
+from starlette.middleware.base import BaseHTTPMiddleware
+
+class CorrelationIdMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        correlation_id = request.headers.get("x-correlation-id", str(uuid.uuid4()))
+        request.state.correlation_id = correlation_id
+        response = await call_next(request)
+        response.headers["x-correlation-id"] = correlation_id
+        return response
+```
+
+**Rule:** Every log emitted during a request must carry `correlationId`. If it doesn't, you cannot reconstruct what happened for a specific user complaint.
+
+### 7.4 Health Check Endpoint
+
+Every service must expose a `/health` endpoint. Load balancers, container orchestrators, and uptime monitors all need it. Without it, a broken service continues receiving traffic.
+
+```typescript
+// routes/health.ts
+import { Router } from 'express';
+import { db } from '../db';
+
+const router = Router();
+
+router.get('/health', async (req, res) => {
+  const checks: Record<string, 'ok' | 'error'> = {};
+
+  // Check every critical dependency
+  try {
+    await db.query('SELECT 1');
+    checks.database = 'ok';
+  } catch {
+    checks.database = 'error';
+  }
+
+  // Add checks for Redis, external APIs, message queues etc.
+
+  const allOk = Object.values(checks).every(v => v === 'ok');
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'ok' : 'degraded',
+    checks,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+export default router;
+```
+
+```python
+# routes/health.py — FastAPI example
+from fastapi import APIRouter
+from datetime import datetime, timezone
+import time
+
+router = APIRouter()
+START_TIME = time.time()
+
+@router.get("/health")
+async def health_check(db=Depends(get_db)):
+    checks = {}
+    try:
+        await db.execute("SELECT 1")
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "error"
+
+    all_ok = all(v == "ok" for v in checks.values())
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={
+            "status": "ok" if all_ok else "degraded",
+            "checks": checks,
+            "uptime_seconds": round(time.time() - START_TIME),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+```
+
+**Rules:**
+- `/health` must return 200 only when all critical dependencies are reachable
+- Return 503 (not 500) when degraded — 503 signals "temporarily unavailable" to load balancers
+- Never put business logic behind `/health` — it must respond in under 500ms
+- Never expose internal IP addresses, stack traces, or secrets in the health response
+
+### 7.5 Error Tracking Integration
+
+Logs tell you something happened. Error tracking (Sentry, Bugsnag, Rollbar) tells you how often it's happening, which users it's affecting, and shows you the full stack trace with local variable values at the time of the crash.
+
+```typescript
+// lib/errorTracker.ts
+import * as Sentry from '@sentry/node';
+
+export function initErrorTracking() {
+  if (!process.env.SENTRY_DSN) return; // graceful no-op in dev
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    // Never send PII to Sentry
+    beforeSend(event) {
+      if (event.request?.data) {
+        delete event.request.data.password;
+        delete event.request.data.token;
+        delete event.request.data.cardNumber;
+      }
+      return event;
+    },
+  });
+}
+
+// Capture with context — so Sentry groups it correctly
+export function captureError(error: Error, context: Record<string, unknown> = {}) {
+  Sentry.withScope(scope => {
+    Object.entries(context).forEach(([key, value]) => scope.setExtra(key, value));
+    Sentry.captureException(error);
+  });
+}
+
+// Express error handler (must be last middleware)
+export const sentryErrorHandler = Sentry.Handlers.errorHandler();
+```
+
+```python
+# lib/error_tracker.py
+import sentry_sdk
+import os
+
+def init_error_tracking():
+    dsn = os.environ.get("SENTRY_DSN")
+    if not dsn:
+        return  # graceful no-op in dev
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=os.environ.get("ENVIRONMENT", "development"),
+        before_send=scrub_sensitive_data,
+    )
+
+def scrub_sensitive_data(event, hint):
+    if "request" in event and "data" in event["request"]:
+        for key in ("password", "token", "card_number"):
+            event["request"]["data"].pop(key, None)
+    return event
+```
+
+**Checklist before saying observability is done:**
+- [ ] Error tracker initialized at app startup
+- [ ] All unhandled exceptions route to error tracker
+- [ ] PII scrubbed before sending to error tracker
+- [ ] `SENTRY_DSN` (or equivalent) in `.env.example`
+- [ ] Error tracker environment set correctly (dev errors don't pollute prod alerts)
+
+---
+
+## MODE 8: TESTING
+
+**Trigger:** User asks about tests, coverage, TDD, or "how do I test this." Also activate when a new feature is about to be implemented — tests come before code.
+
+**Rule:** Code without tests is not finished. It is a prototype that happens to be deployed.
+
+This mode has four sections: assess what exists, write tests before code, unit test patterns, and integration test patterns.
+
+### 8.1 Assess the Current Test Situation
+
+Before writing a single test, understand what already exists and what's missing.
+
+```bash
+# Count test files vs source files
+find src -name "*.ts" -not -name "*.test.ts" -not -name "*.spec.ts" | wc -l
+find src -name "*.test.ts" -o -name "*.spec.ts" | wc -l
+
+# Same for Python
+find . -name "*.py" -not -name "test_*.py" -not -name "*_test.py" \
+  -not -path "*/venv/*" | wc -l
+find . -name "test_*.py" -o -name "*_test.py" | wc -l
+
+# TypeScript coverage (if configured)
+npx jest --coverage --coverageReporters=text-summary 2>/dev/null | tail -5
+
+# Python coverage
+python -m pytest --co -q 2>/dev/null | tail -5
+```
+
+**Report the following:**
+- Test file count vs source file count
+- Which source files have zero test coverage (list them)
+- Whether a test runner is configured (jest.config, pytest.ini, vitest.config)
+- Whether coverage thresholds are enforced in CI
+
+**Triage by risk:** Not everything needs 100% coverage. Prioritize tests for:
+1. Business logic with branching (calculations, validation, rules)
+2. Auth and permission checks
+3. Data transformation functions
+4. Error handling paths
+5. External API integrations
+
+### 8.2 TDD Gate — Test Before Implementation
+
+When a user asks you to implement a new function or feature, apply this protocol:
+
+1. **Write the test first.** Ask: "What should this function do?" Write one test that will pass when it's done correctly.
+2. **Run it and confirm it fails.** A test that passes before the implementation exists is not a real test.
+3. **Write the minimum implementation to make it pass.**
+4. **Refactor the implementation** without breaking the test.
+5. **Add edge case tests** — null inputs, empty collections, boundary values, error paths.
+6. **Repeat** for the next behaviour.
+
+Do not write more than one failing test at a time. Do not implement more than what the failing test requires.
+
+**When to say "tests first" is not practical:**
+- Exploratory spike code that will be thrown away
+- UI layout adjustments
+- Configuration changes
+- Very simple one-liner utilities with no branching
+
+**Everything else:** test first.
+
+### 8.3 Unit Test Patterns
+
+A unit test tests one function in isolation. It does not hit the database, network, or filesystem.
+
+```typescript
+// ✅ CORRECT — tests one thing, readable, isolated
+import { calculateDiscount } from '../services/pricing';
+
+describe('calculateDiscount', () => {
+  it('applies percentage discount to base price', () => {
+    expect(calculateDiscount(100, 0.2)).toBe(80);
+  });
+
+  it('returns original price when discount is zero', () => {
+    expect(calculateDiscount(100, 0)).toBe(100);
+  });
+
+  it('throws when discount exceeds 100%', () => {
+    expect(() => calculateDiscount(100, 1.1)).toThrow('Discount cannot exceed 100%');
+  });
+
+  it('throws on negative price', () => {
+    expect(() => calculateDiscount(-10, 0.2)).toThrow('Price must be positive');
+  });
+});
+
+// ❌ WRONG — tests too many things at once, hits real dependencies
+it('processes order', async () => {
+  const result = await processOrder(db, email, payment, userId, items);
+  expect(result.status).toBe('complete');
+});
+```
+
+```python
+# ✅ CORRECT
+import pytest
+from services.pricing import calculate_discount
+
+class TestCalculateDiscount:
+    def test_applies_percentage_discount(self):
+        assert calculate_discount(100, 0.2) == 80
+
+    def test_returns_original_when_no_discount(self):
+        assert calculate_discount(100, 0) == 100
+
+    def test_raises_on_discount_over_100_percent(self):
+        with pytest.raises(ValueError, match="cannot exceed 100%"):
+            calculate_discount(100, 1.1)
+
+    def test_raises_on_negative_price(self):
+        with pytest.raises(ValueError, match="must be positive"):
+            calculate_discount(-10, 0.2)
+```
+
+**Unit test rules:**
+- One assertion per test where possible — when a test fails, the name tells you exactly what broke
+- Test names read as sentences: `"applies percentage discount to base price"`
+- Always test the error paths — they're what breaks in production
+- Mock external dependencies (DB, HTTP, filesystem) at the boundary — never in the middle of business logic
+- Never test implementation details — test behaviour (what it does, not how)
+
+### 8.4 Integration Test Patterns
+
+An integration test tests that two or more real components work together. It hits a real database (test instance), makes real HTTP calls to the service, and uses real file I/O. It does not mock things that are in scope.
+
+```typescript
+// ✅ CORRECT — hits real DB, tests the full stack for one endpoint
+import request from 'supertest';
+import { app } from '../app';
+import { db } from '../db';
+
+beforeEach(async () => {
+  await db.query('BEGIN');
+});
+
+afterEach(async () => {
+  await db.query('ROLLBACK'); // no test pollution
+});
+
+describe('POST /users', () => {
+  it('creates a user and returns 201', async () => {
+    const res = await request(app)
+      .post('/users')
+      .send({ email: 'test@example.com', name: 'Test User', role: 'user' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.email).toBe('test@example.com');
+    expect(res.body.data.id).toBeDefined();
+
+    // Verify it actually persisted
+    const row = await db.query('SELECT * FROM users WHERE email = $1', ['test@example.com']);
+    expect(row.rows).toHaveLength(1);
+  });
+
+  it('returns 400 on invalid email', async () => {
+    const res = await request(app)
+      .post('/users')
+      .send({ email: 'not-an-email', name: 'Test' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 409 on duplicate email', async () => {
+    await request(app).post('/users').send({ email: 'dupe@example.com', name: 'First' });
+    const res = await request(app).post('/users').send({ email: 'dupe@example.com', name: 'Second' });
+    expect(res.status).toBe(409);
+  });
+});
+```
+
+```python
+# ✅ CORRECT — pytest + httpx + real DB in transaction
+import pytest
+from httpx import AsyncClient
+from app.main import app
+
+@pytest.fixture(autouse=True)
+async def rollback_transaction(db_session):
+    yield
+    await db_session.rollback()  # no test pollution
+
+@pytest.mark.anyio
+async def test_create_user_returns_201():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.post("/users", json={
+            "email": "test@example.com",
+            "name": "Test User",
+            "role": "user"
+        })
+    assert response.status_code == 201
+    assert response.json()["data"]["email"] == "test@example.com"
+```
+
+**Integration test rules:**
+- Use transactions and rollback after each test — never leave data in the DB between tests
+- Use a dedicated test database — never run integration tests against dev or prod
+- Test the actual HTTP response shape — it's what consumers depend on
+- Cover: happy path, validation error, auth error, not-found, conflict (duplicate)
+
+### 8.5 Test Quality Checklist
+
+A test suite can have 100% coverage and still be worthless. Apply this checklist to judge quality:
+
+```
+□ Tests have descriptive names — reading the name tells you what broke without reading the code
+□ Each test has one clear assertion (or a small group of closely related assertions)
+□ Tests are independent — running them in any order produces the same result
+□ No test data leaks between tests (transactions rolled back, mocks reset)
+□ Error paths are tested, not just the happy path
+□ Boundary values are tested: empty input, null, zero, max length, off-by-one
+□ Tests do not assert on internal implementation (private methods, internal state)
+□ No sleep() / arbitrary timeouts in tests — use proper async/await or hooks
+□ Mocks are minimal — only mock what is outside the unit under test
+□ Test file mirrors source structure: src/services/user.ts → src/services/user.test.ts
+```
+
+**Red flags in a test suite:**
+- Tests that always pass regardless of what the implementation does (false green)
+- Tests that duplicate each other with minor variations — extract parameterised tests
+- Tests with no assertions (`expect` never called)
+- Test setup longer than the test itself — the code is probably too coupled
+
+---
+
+## MODE 9: PERFORMANCE
+
+**Trigger:** User asks about performance, slowness, optimisation, scaling, or "why is this slow." Also activate when reviewing any endpoint that queries a database or calls an external service.
+
+**Rule:** Don't optimise prematurely. But don't ship known performance problems either. This mode identifies problems that are cheap to fix now and expensive to fix after they're in production under load.
+
+This mode covers five areas: database indexing, caching, frontend bundle size, memory leaks, and missing pagination.
+
+### 9.1 Database Index Analysis
+
+Missing indexes are the single most common cause of production performance problems in vibe-coded apps. A query that runs in 2ms on a 100-row dev table runs in 4 seconds on a 500k-row production table.
+
+**Find unindexed queries — check every WHERE, JOIN ON, and ORDER BY clause:**
+
+```sql
+-- PostgreSQL: find sequential scans on large tables (run this on prod/staging)
+SELECT schemaname, tablename, seq_scan, seq_tup_read, idx_scan
+FROM pg_stat_user_tables
+WHERE seq_scan > 0
+ORDER BY seq_tup_read DESC
+LIMIT 20;
+
+-- PostgreSQL: unused indexes (wasting write performance)
+SELECT indexrelid::regclass AS index, relid::regclass AS table,
+       idx_scan, idx_tup_read, idx_tup_fetch
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+```bash
+# Find all WHERE clauses in query files — review each for missing index
+grep -rn "WHERE\|JOIN.*ON\|ORDER BY" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" --include="*.sql" \
+  | grep -v "\.test\.\|\.spec\."
+```
+
+**Index rules:**
+- Every foreign key column needs an index (unless the table is tiny)
+- Every column used in a WHERE clause on a frequently-queried table needs an index
+- Composite indexes: column order matters — most selective column first
+- Indexes slow down writes — only add them when you can measure the read benefit
+- After adding an index: run `EXPLAIN ANALYZE` before and after to verify it's used
+
+```sql
+-- Always verify with EXPLAIN ANALYZE before shipping
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
+-- Look for: "Index Scan" (good) vs "Seq Scan" (investigate)
+```
+
+### 9.2 Caching Opportunity Detection
+
+Cache data that is: read far more than it is written, expensive to compute, and acceptable to be slightly stale.
+
+**Identify candidates:**
+```bash
+# Find repeated DB queries in the same request scope
+grep -rn "await.*Repository\|await.*\.find\|await.*\.query" src/ \
+  --include="*.ts" --include="*.js" | grep -v "\.test\."
+
+# Find expensive operations called on every request
+grep -rn "await.*fetch\|await.*axios\|await.*http" src/ \
+  --include="*.ts" --include="*.js" | grep -v "\.test\."
+```
+
+**Cache-aside pattern (Redis):**
+```typescript
+// lib/cache.ts
+import { redis } from './redis';
+
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached) as T;
+
+  const fresh = await fetcher();
+  await redis.setex(key, ttlSeconds, JSON.stringify(fresh));
+  return fresh;
+}
+
+// Usage — cache user permissions for 60 seconds
+const permissions = await withCache(
+  `permissions:${userId}`,
+  60,
+  () => permissionRepository.findByUserId(userId)
+);
+```
+
+```python
+# Python equivalent
+import json
+from functools import wraps
+
+async def with_cache(redis_client, key: str, ttl: int, fetcher):
+    cached = await redis_client.get(key)
+    if cached:
+        return json.loads(cached)
+    fresh = await fetcher()
+    await redis_client.setex(key, ttl, json.dumps(fresh))
+    return fresh
+```
+
+**Caching rules:**
+- Set explicit TTLs — never cache without expiry
+- Cache at the right layer: HTTP (CDN/reverse proxy) > application > database
+- Always have a cache invalidation strategy before you add a cache
+- Never cache: user-specific auth tokens, mutable state that must be instantly consistent, or data that is unique per request
+
+### 9.3 Bundle Size and Import Patterns (Frontend)
+
+Importing an entire library for one function is a common frontend performance killer.
+
+```bash
+# Analyse bundle composition (webpack / vite projects)
+npx vite-bundle-visualizer 2>/dev/null || npx webpack-bundle-analyzer 2>/dev/null || true
+
+# Find barrel imports that pull in entire libraries
+grep -rn "^import.*from 'lodash'" src/ --include="*.ts" --include="*.tsx"
+grep -rn "^import.*from 'date-fns'" src/ --include="*.ts" --include="*.tsx"
+grep -rn "^import \* as\|^import {.*} from 'moment'" src/ --include="*.ts" --include="*.tsx"
+```
+
+**Common patterns to fix:**
+
+```typescript
+// ❌ WRONG — imports entire lodash (~70KB gzipped)
+import _ from 'lodash';
+const sorted = _.sortBy(users, 'name');
+
+// ✅ CORRECT — named import, tree-shakeable
+import { sortBy } from 'lodash-es';
+const sorted = sortBy(users, 'name');
+
+// ✅ BETTER — use native platform API (zero bundle cost)
+const sorted = [...users].sort((a, b) => a.name.localeCompare(b.name));
+
+// ❌ WRONG — imports entire date-fns
+import * as dateFns from 'date-fns';
+
+// ✅ CORRECT — import only what you use
+import { format, differenceInDays } from 'date-fns';
+
+// ❌ WRONG — large component imported eagerly on initial load
+import { HeavyDashboard } from './HeavyDashboard';
+
+// ✅ CORRECT — lazy load routes and heavy components
+const HeavyDashboard = lazy(() => import('./HeavyDashboard'));
+```
+
+**Bundle rules:**
+- Every new dependency added to a frontend project: check its size on bundlephobia.com
+- Prefer native browser APIs over utility libraries for simple operations
+- Lazy-load any route or component that is not on the critical first-render path
+- Images: use WebP, set explicit width/height to prevent layout shift, lazy-load below the fold
+
+### 9.4 Memory Leak Detection
+
+Memory leaks in Node.js and React cause services to degrade slowly until they crash or need a restart.
+
+```bash
+# Find event listeners that may not be cleaned up
+grep -rn "addEventListener\|\.on(" src/ --include="*.ts" --include="*.js" \
+  | grep -v "removeEventListener\|\.off(\|\.once(" | grep -v "\.test\."
+
+# Find setInterval without clearInterval
+grep -rn "setInterval(" src/ --include="*.ts" --include="*.js" \
+  | grep -v "clearInterval\|\.test\."
+
+# Find React useEffect with subscriptions but no cleanup return
+grep -A 20 "useEffect(" src/ --include="*.tsx" --include="*.ts" -rn \
+  | grep -B 5 "subscribe\|addEventListener\|setInterval\|WebSocket" \
+  | grep -v "return () =>"
+```
+
+**Common memory leak patterns:**
+
+```typescript
+// ❌ WRONG — event listener never removed
+function MyComponent() {
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    // no cleanup
+  }, []);
+}
+
+// ✅ CORRECT — cleanup returned from useEffect
+function MyComponent() {
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+}
+
+// ❌ WRONG — interval never cleared
+function startPolling() {
+  setInterval(fetchUpdates, 5000);
+}
+
+// ✅ CORRECT — interval stored and cleared on teardown
+function startPolling() {
+  const intervalId = setInterval(fetchUpdates, 5000);
+  return () => clearInterval(intervalId);
+}
+
+// ❌ WRONG — closure holds reference to large object forever
+function processData(largeDataset: LargeObject[]) {
+  const cache = new Map();
+  return function lookup(id: string) {
+    // largeDataset is captured in closure, never freed
+    return cache.get(id) ?? largeDataset.find(d => d.id === id);
+  };
+}
+```
+
+**Node.js specific:**
+- Database connection pools not released on error → always use `finally` to release connections
+- Unbounded caches (Maps/Sets that grow forever with no eviction)
+- Streams not closed on error — always attach `error` handlers and call `destroy()`
+
+### 9.5 Missing Pagination
+
+Any endpoint that returns a list without pagination will eventually return so much data it times out or crashes the client.
+
+```bash
+# Find list endpoints with no pagination parameters
+grep -rn "findMany\|findAll\|\.find(\|SELECT.*FROM" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "LIMIT\|limit\|take\|skip\|offset\|page\|cursor" \
+  | grep -v "\.test\.\|\.spec\."
+```
+
+**Pagination pattern:**
+
+```typescript
+// ❌ WRONG — returns entire table
+async function getOrders(): Promise<Order[]> {
+  return db.query('SELECT * FROM orders');
+}
+
+// ✅ CORRECT — cursor-based pagination (preferred for large/live datasets)
+interface PaginationParams {
+  cursor?: string;  // last seen ID
+  limit: number;    // max 100
+}
+
+async function getOrders(params: PaginationParams): Promise<{
+  data: Order[];
+  nextCursor: string | null;
+}> {
+  const limit = Math.min(params.limit, 100);
+  const rows = await db.query<Order>(
+    `SELECT id, user_id, status, created_at
+     FROM orders
+     WHERE ($1::uuid IS NULL OR id > $1::uuid)
+     ORDER BY id ASC
+     LIMIT $2`,
+    [params.cursor ?? null, limit + 1]  // fetch one extra to detect next page
+  );
+
+  const hasNext = rows.rows.length > limit;
+  const data = hasNext ? rows.rows.slice(0, limit) : rows.rows;
+
+  return {
+    data,
+    nextCursor: hasNext ? data[data.length - 1].id : null,
+  };
+}
+```
+
+**Pagination rules:**
+- Every list endpoint must have a `limit` parameter with a hard maximum (e.g. 100)
+- Default page size should be small (20–50), not unlimited
+- Cursor-based pagination preferred over offset for large datasets (offset degrades at scale)
+- Always include `totalCount` or `hasNextPage` so clients know when to stop
+
+---
+
+## MODE 10: API DESIGN
+
+**Trigger:** User is designing or reviewing API endpoints, asks about REST conventions, or is building something that other code (or other teams) will call.
+
+**Rule:** An API is a contract. Once callers depend on it, changing it is expensive. Get it right before it ships.
+
+This mode covers: HTTP status codes, error response shape, pagination, idempotency, versioning, and documentation.
+
+### 10.1 HTTP Status Codes — Use Them Correctly
+
+```
+200 OK          GET, PUT, PATCH succeeded. Body contains the result.
+201 Created     POST created a resource. Include Location header or the new resource in body.
+204 No Content  DELETE succeeded. No body.
+400 Bad Request Client sent invalid data. Body explains what was wrong.
+401 Unauthorized  No valid credentials. Client must authenticate.
+403 Forbidden   Credentials valid but not authorised for this resource.
+404 Not Found   Resource does not exist. (Also use to avoid leaking existence of private resources)
+409 Conflict    Request conflicts with current state (duplicate, version mismatch).
+422 Unprocessable Entity  Syntactically valid but semantically wrong (validation failure).
+429 Too Many Requests  Rate limited. Include Retry-After header.
+500 Internal Server Error  Something broke on the server. Never expose stack traces.
+503 Service Unavailable   Temporarily down. Include Retry-After if known.
+```
+
+**Common mistakes to flag:**
+```typescript
+// ❌ WRONG — returning 200 for everything and encoding status in body
+res.status(200).json({ success: false, error: 'User not found' });
+
+// ✅ CORRECT — HTTP status carries the primary signal
+res.status(404).json({ error: 'USER_NOT_FOUND', message: 'No user with that ID exists' });
+
+// ❌ WRONG — using 500 for client errors
+if (!req.body.email) res.status(500).json({ error: 'Missing email' });
+
+// ✅ CORRECT
+if (!req.body.email) res.status(400).json({ error: 'MISSING_FIELD', field: 'email' });
+
+// ❌ WRONG — 200 on POST that creates
+res.status(200).json(newUser);
+
+// ✅ CORRECT
+res.status(201).json({ success: true, data: newUser });
+```
+
+### 10.2 Consistent Error Response Shape
+
+Every error across every endpoint must have the same shape. If some errors return `{ error: "..." }` and others return `{ message: "..." }` and others return `{ errors: [...] }`, clients must write different handling code for each one.
+
+```typescript
+// Standard error shape — use this everywhere
+interface ApiError {
+  error: string;        // machine-readable code: 'USER_NOT_FOUND', 'VALIDATION_FAILED'
+  message: string;      // human-readable description
+  field?: string;       // for validation errors: which field failed
+  details?: unknown;    // optional structured context for debugging
+}
+
+// Centralise in error middleware — never construct error responses by hand in route handlers
+// middleware/errorHandler.ts
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof ValidationError) {
+    return res.status(400).json({
+      error: 'VALIDATION_FAILED',
+      message: err.message,
+      field: err.field,
+    });
+  }
+  if (err instanceof NotFoundError) {
+    return res.status(404).json({
+      error: 'NOT_FOUND',
+      message: err.message,
+    });
+  }
+  // Unknown error — log it, don't leak internals
+  logger.error('Unhandled error', { error: err, path: req.path });
+  res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
+  });
+});
+```
+
+```python
+# FastAPI example — centralised exception handlers
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    return JSONResponse(status_code=400, content={
+        "error": "VALIDATION_FAILED",
+        "message": str(exc),
+        "field": exc.field,
+    })
+```
+
+### 10.3 Idempotency for Mutation Endpoints
+
+A network retry should not create duplicate records. Payment endpoints, order creation, and any operation with real-world side effects must be idempotent.
+
+```typescript
+// ❌ WRONG — retrying POST /orders creates duplicate orders
+app.post('/orders', async (req, res) => {
+  const order = await orderRepository.create(req.body);
+  res.status(201).json(order);
+});
+
+// ✅ CORRECT — idempotency key prevents duplicates
+app.post('/orders', async (req, res) => {
+  const idempotencyKey = req.headers['idempotency-key'] as string;
+  if (!idempotencyKey) {
+    return res.status(400).json({ error: 'MISSING_IDEMPOTENCY_KEY',
+      message: 'Include Idempotency-Key header for order creation' });
+  }
+
+  // Check if this key was already used
+  const existing = await idempotencyStore.get(idempotencyKey);
+  if (existing) {
+    return res.status(200).json(existing); // return cached result, same as original
+  }
+
+  const order = await orderRepository.create(req.body);
+
+  // Store result keyed by idempotency key (TTL: 24h)
+  await idempotencyStore.set(idempotencyKey, order, 86400);
+  res.status(201).json(order);
+});
+```
+
+**Idempotency rules:**
+- Any endpoint that creates a resource, charges money, or sends a message needs an idempotency key
+- Store the full response — return exactly the same response on replay, including status code
+- TTL on idempotency keys: 24 hours is standard (matches typical retry windows)
+- For PUT/PATCH: these should be naturally idempotent — sending the same data twice must produce the same state
+
+### 10.4 API Versioning
+
+Version before you need to. Changing an unversioned API forces all callers to update at the same time.
+
+```typescript
+// ✅ URL path versioning — explicit, cacheable, easy to route
+app.use('/api/v1', v1Router);
+app.use('/api/v2', v2Router);
+
+// ❌ Header versioning — less visible, harder to test in browser
+// Accept: application/vnd.myapi.v2+json
+
+// Versioning rules:
+// - Increment version on any breaking change: removed fields, changed types, renamed fields
+// - Additive changes (new optional fields, new endpoints) do not need a new version
+// - Keep v(n-1) running for at least 3 months after v(n) ships — give callers time to migrate
+// - Announce deprecation in the response header: Deprecation: true, Sunset: <date>
+```
+
+```typescript
+// Deprecation warning in response headers
+app.use('/api/v1', (req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', 'Sat, 01 Jan 2027 00:00:00 GMT');
+  res.setHeader('Link', '</api/v2>; rel="successor-version"');
+  next();
+}, v1Router);
+```
+
+### 10.5 OpenAPI Documentation
+
+An API without documentation is only usable by the person who wrote it.
+
+```bash
+# Check if OpenAPI spec exists
+find . -name "openapi.yaml" -o -name "openapi.json" -o -name "swagger.yaml" \
+  | grep -v node_modules
+
+# Check for inline documentation (zod-to-openapi, tsoa, fastapi auto-docs)
+grep -rn "@openapi\|@swagger\|zodToOpenAPI\|@ApiProperty\|openApiSchemas" src/ \
+  --include="*.ts" --include="*.py" | head -10
+```
+
+**Minimum documentation per endpoint:**
+```yaml
+# openapi.yaml excerpt
+paths:
+  /users/{id}:
+    get:
+      summary: Get user by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: User found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '404':
+          description: User not found
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ApiError' }
+```
+
+**Preferred approach — generate from code, not by hand:**
+- TypeScript + Express: `zod-to-openapi` or `tsoa`
+- FastAPI: automatic OpenAPI generation at `/docs`
+- NestJS: `@nestjs/swagger` decorators
+- Never maintain a hand-written OpenAPI spec separately from the code — it will diverge
+
+---
+
+## MODE 11: DEPENDENCY HYGIENE
+
+**Trigger:** User adds a new package, asks about dependencies, or the project has not been audited for unused or risky packages.
+
+**Rule:** Every dependency is code you didn't write, don't fully understand, and must maintain forever. Add them deliberately. Remove them aggressively.
+
+This mode covers: unnecessary dependencies, license compatibility, lockfile discipline, and native platform replacements.
+
+### 11.1 Unnecessary Dependency Detection
+
+```bash
+# Find declared packages not imported anywhere (Node)
+npx depcheck 2>/dev/null | head -30
+
+# Find packages imported but not in package.json (phantom deps)
+npx knip 2>/dev/null | head -30
+
+# Python: find unused imports
+pip install pylint 2>/dev/null; pylint --disable=all --enable=W0611 src/ 2>/dev/null | grep "unused-import"
+
+# Count total production dependencies
+cat package.json | python -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('dependencies',{})), 'prod deps,', len(d.get('devDependencies',{})), 'dev deps')"
+```
+
+**For each dependency, ask:**
+1. Is it still imported anywhere in the codebase?
+2. Is it doing something the language/platform now does natively?
+3. Is it duplicating another dependency (two date libraries, two HTTP clients)?
+4. Is it in `dependencies` but only used in tests/build? → move to `devDependencies`
+5. Is it a one-function package (`is-odd`, `left-pad`)? → inline it
+
+**Flag for removal:**
+- Zero imports in src/ (depcheck catches this)
+- Last published more than 3 years ago with open CVEs
+- Superseded by a native API (`request` → `fetch`, `moment` → `Temporal`/`date-fns`)
+- Only used in one place and the implementation is trivial to inline
+
+### 11.2 License Compatibility
+
+Using a GPL-licensed package in a commercial closed-source product can legally require you to open-source your entire product.
+
+```bash
+# Scan all dependency licenses (Node)
+npx license-checker --summary 2>/dev/null | head -30
+
+# Flag any GPL or AGPL licenses
+npx license-checker --failOn "GPL;AGPL;LGPL" 2>/dev/null
+
+# Python equivalent
+pip install pip-licenses 2>/dev/null; pip-licenses --summary 2>/dev/null
+```
+
+**License quick reference:**
+```
+MIT, ISC, BSD-2, BSD-3, Apache-2.0   ✅ Safe for commercial use
+LGPL                                  ⚠️  OK if used as a library (not modified)
+GPL-2.0, GPL-3.0                      ❌ Copyleft — forces your code open-source
+AGPL-3.0                              ❌ Copyleft — even SaaS delivery triggers it
+SSPL                                  ❌ MongoDB's license — similar to AGPL
+Unlicense, CC0                        ✅ Public domain
+```
+
+**Rule:** Before adding any dependency to a commercial project, check its license. One `npm install` away from a legal problem.
+
+### 11.3 Lockfile and Version Pinning
+
+```bash
+# Check lockfile is committed
+git ls-files | grep -E "package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock"
+
+# Check for missing lockfile
+ls package-lock.json yarn.lock pnpm-lock.yaml 2>/dev/null || echo "WARNING: no lockfile found"
+
+# Check for floating versions (^ or ~ without lockfile control)
+grep -E '"[^"]+": "\^|~' package.json | head -20
+```
+
+**Rules:**
+- Lockfile must be committed — without it, `npm install` on a fresh machine can install different versions
+- In `package.json`, `^` (caret) is acceptable if the lockfile is committed and kept up to date
+- Avoid `*` or `latest` for any production dependency — supply chain attacks target this
+- Pin exact versions (`"1.2.3"` not `"^1.2.3"`) for security-sensitive packages: auth libraries, crypto, validators
+- `devDependencies` are lower risk — `^` is fine there
+- Update dependencies on a schedule (weekly via Dependabot or Renovate), not reactively
+
+### 11.4 Native Platform Replacements
+
+Before reaching for a package, check whether the runtime already does it. Every dependency you avoid is one fewer supply chain risk, one fewer CVE to monitor, and zero bundle cost.
+
+**Quick reference — common packages with native alternatives:**
+
+```
+Package              Replace with                              Notes
+─────────────────────────────────────────────────────────────────────────────
+lodash               Native array/object methods               Built into JS since ES2015+
+moment               Intl.DateTimeFormat + date-fns (if needed) moment is 67KB, deprecated
+request              fetch (Node 18+)                          Built-in, no install needed
+node-fetch           fetch (Node 18+)                          Not needed post-Node 18
+cross-fetch          fetch (Node 18+)                          Same as above
+uuid                 crypto.randomUUID()                       Built-in Node 16+, all browsers
+mkdirp               fs.mkdir(path, { recursive: true })       Built-in Node 12+
+rimraf               fs.rm(path, { recursive: true, force: true }) Built-in Node 14.14+
+is-array / is-string Array.isArray() / typeof x === 'string'  Single-line check
+left-pad             String.prototype.padStart()               Built-in since ES2017
+path-exists          fs.existsSync() / fs.access()             Built-in
+```
+
+```typescript
+// ❌ WRONG — lodash for simple operations
+import _ from 'lodash';
+const unique = _.uniq(items);
+const flat = _.flatten(nested);
+const grouped = _.groupBy(orders, 'status');
+
+// ✅ CORRECT — native (zero bundle cost)
+const unique = [...new Set(items)];
+const flat = nested.flat();
+const grouped = Object.groupBy(orders, o => o.status); // ES2024, or use reduce
+
+// ❌ WRONG — moment for date formatting
+import moment from 'moment';
+const formatted = moment(date).format('YYYY-MM-DD');
+const diffDays = moment(end).diff(moment(start), 'days');
+
+// ✅ CORRECT — Intl.DateTimeFormat (built-in) or date-fns for complex cases
+const formatted = new Intl.DateTimeFormat('en-CA').format(date); // outputs YYYY-MM-DD
+const diffDays = Math.floor((end.getTime() - start.getTime()) / 86_400_000);
+
+// ❌ WRONG — uuid package
+import { v4 as uuidv4 } from 'uuid';
+const id = uuidv4();
+
+// ✅ CORRECT — native
+const id = crypto.randomUUID(); // Node 16+, all modern browsers
+
+// ❌ WRONG — node-fetch (not needed in Node 18+)
+import fetch from 'node-fetch';
+const res = await fetch(url);
+
+// ✅ CORRECT — global fetch built in
+const res = await fetch(url);
+
+// ❌ WRONG — mkdirp package
+import mkdirp from 'mkdirp';
+await mkdirp('/some/nested/path');
+
+// ✅ CORRECT — fs.mkdir recursive
+import { mkdir } from 'fs/promises';
+await mkdir('/some/nested/path', { recursive: true });
+```
+
+```python
+# ❌ WRONG — requests in an async app (blocking)
+import requests
+response = requests.get(url)
+
+# ✅ CORRECT — httpx (sync + async) or aiohttp (async-only)
+import httpx
+async with httpx.AsyncClient() as client:
+    response = await client.get(url)
+
+# ❌ WRONG — python-dateutil for basic arithmetic
+from dateutil.relativedelta import relativedelta
+next_month = today + relativedelta(months=1)
+
+# ✅ CORRECT — calendar module from stdlib for month-aware math
+import calendar
+from datetime import date
+days_in_month = calendar.monthrange(today.year, today.month)[1]
+```
+
+**Decision rule before installing a package:**
+1. Does Node/Python version you're targeting support it natively? Check first.
+2. Is it a one-function package (`is-odd`, `left-pad`, `is-array`)? Inline it.
+3. Is it doing only one thing you use? Write the one thing.
+4. Check `bundlephobia.com` for size impact (frontend packages only)
+5. Check `npm info <pkg> time.modified` — packages unmaintained for 3+ years with CVEs should be replaced
+
 ---
 
 ## Quick Reference
 
-| Command | What happens |
-|---|---|
-| `/vibe-hardener audit` | Full audit report with severity levels |
-| `/vibe-hardener refactor [path]` | Production-grade refactor with plan first |
-| `/vibe-hardener security-review` | OWASP Top 10 + deps scan |
-| `/vibe-hardener spec [description]` | Interview → spec → implement gated |
-| `/vibe-hardener review` | Pre-PR checklist |
-| `/vibe-hardener standards` | Print the always-on rules |
+| Prompt | Mode | What happens |
+|---|---|---|
+| `use vibe-hardener to audit` | 1 | Full audit report: HIGH/MEDIUM/LOW + architecture smells |
+| `use vibe-hardener to refactor [path]` | 2 | Production-grade refactor — plan shown before execution |
+| `use vibe-hardener to security-review` | 3 | OWASP Top 10 scan + CRITICAL/HIGH/MEDIUM report |
+| `use vibe-hardener to spec [description]` | 4 | Interview → spec file → approval gate → incremental implementation |
+| `use vibe-hardener to review` | 5 | Pre-PR checklist: quality, arch, security, testing, observability, deps |
+| `use vibe-hardener to show standards` | 6 | Print always-on rules (TS, Python, Go, error patterns, DB) |
+| `use vibe-hardener to observability` | 7 | Structured logging, correlation IDs, health check, error tracking |
+| `use vibe-hardener to testing` | 8 | TDD gate, unit + integration test patterns, test quality checklist |
+| `use vibe-hardener to performance` | 9 | DB indexes, caching, bundle size, memory leaks, pagination |
+| `use vibe-hardener to api-design` | 10 | HTTP status codes, error shape, idempotency, versioning, OpenAPI |
+| `use vibe-hardener to dependency-hygiene` | 11 | Unused deps, license scan, lockfile check, native replacements |
 
 ---
 
