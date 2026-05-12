@@ -767,6 +767,80 @@ grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
 [ ] BLOCKED — Critical issues must be resolved
 ```
 
+### Pre-Commit Hook Setup
+
+Pre-commit hooks prevent secrets and lint violations from reaching the remote at all — cheaper than catching them in CI. If the project has no pre-commit configuration, recommend setting one up.
+
+**Node/TypeScript projects:**
+
+```bash
+# Install husky and lint-staged
+npm install --save-dev husky lint-staged
+
+# Initialize husky
+npx husky init
+```
+
+`.husky/pre-commit`:
+```sh
+#!/bin/sh
+npx lint-staged
+```
+
+`package.json` (lint-staged section):
+```json
+{
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix --max-warnings=0",
+      "prettier --write"
+    ]
+  }
+}
+```
+
+**Python projects (pre-commit framework):**
+
+```bash
+pip install pre-commit
+```
+
+`.pre-commit-config.yaml`:
+```yaml
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+        name: Detect secrets (gitleaks)
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.4.4
+    hooks:
+      - id: ruff
+        args: [--fix, --exit-non-zero-on-fix]
+      - id: ruff-format
+
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: detect-private-key
+```
+
+```bash
+pre-commit install       # installs hooks into .git/hooks
+pre-commit run --all-files  # run against existing files
+```
+
+**Hooks to always include:**
+- **Secret detection** (gitleaks or detect-secrets): catches API keys, tokens, connection strings before push
+- **Linter** (ESLint / ruff): prevents style and correctness issues from entering review
+- **Large file check**: prevents accidentally committing binaries, datasets, or model weights
+- **Merge conflict marker check**: prevents half-resolved conflicts from reaching the remote
+
 ---
 
 ## MODE 4: SPEC-DRIVEN DEVELOPMENT
