@@ -1673,6 +1673,62 @@ function processData(largeDataset: LargeObject[]) {
 - Unbounded caches (Maps/Sets that grow forever with no eviction)
 - Streams not closed on error — always attach `error` handlers and call `destroy()`
 
+### 9.5 Missing Pagination
+
+Any endpoint that returns a list without pagination will eventually return so much data it times out or crashes the client.
+
+```bash
+# Find list endpoints with no pagination parameters
+grep -rn "findMany\|findAll\|\.find(\|SELECT.*FROM" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "LIMIT\|limit\|take\|skip\|offset\|page\|cursor" \
+  | grep -v "\.test\.\|\.spec\."
+```
+
+**Pagination pattern:**
+
+```typescript
+// ❌ WRONG — returns entire table
+async function getOrders(): Promise<Order[]> {
+  return db.query('SELECT * FROM orders');
+}
+
+// ✅ CORRECT — cursor-based pagination (preferred for large/live datasets)
+interface PaginationParams {
+  cursor?: string;  // last seen ID
+  limit: number;    // max 100
+}
+
+async function getOrders(params: PaginationParams): Promise<{
+  data: Order[];
+  nextCursor: string | null;
+}> {
+  const limit = Math.min(params.limit, 100);
+  const rows = await db.query<Order>(
+    `SELECT id, user_id, status, created_at
+     FROM orders
+     WHERE ($1::uuid IS NULL OR id > $1::uuid)
+     ORDER BY id ASC
+     LIMIT $2`,
+    [params.cursor ?? null, limit + 1]  // fetch one extra to detect next page
+  );
+
+  const hasNext = rows.rows.length > limit;
+  const data = hasNext ? rows.rows.slice(0, limit) : rows.rows;
+
+  return {
+    data,
+    nextCursor: hasNext ? data[data.length - 1].id : null,
+  };
+}
+```
+
+**Pagination rules:**
+- Every list endpoint must have a `limit` parameter with a hard maximum (e.g. 100)
+- Default page size should be small (20–50), not unlimited
+- Cursor-based pagination preferred over offset for large datasets (offset degrades at scale)
+- Always include `totalCount` or `hasNextPage` so clients know when to stop
+
 ---
 
 ## Quick Reference
