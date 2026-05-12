@@ -1193,6 +1193,99 @@ if row is None:
     raise NotFoundError(f"User {user_id} not found")
 ```
 
+### Interface Boundary Rules
+
+Architecture layers must not bleed into each other. Each layer depends only on the layer directly below it, and never on a layer above or a sibling layer. Framework objects (request, response, ORM sessions) must not cross layer boundaries.
+
+```
+HTTP layer (routes/controllers)
+    ↓ calls
+Service layer (business logic)
+    ↓ calls
+Repository layer (data access)
+    ↓ calls
+Database / external systems
+```
+
+**Rules — enforced always:**
+- Route handlers do routing only: extract inputs, call service, return response. No business logic.
+- Service functions accept plain domain types, not `Request` / `Response` / `ctx` objects.
+- Repositories accept plain types (IDs, domain objects), not ORM query builder instances from callers.
+- No `import express from 'express'` or `from fastapi import Request` inside a service file.
+- No `import { db } from '../db'` inside a route handler — data access belongs in a repository.
+- Domain objects (models) must not import from routes, services, or repositories.
+
+```typescript
+// ❌ WRONG — route handler doing business logic
+router.post('/orders', async (req, res) => {
+  const user = await db.users.findUnique({ where: { id: req.body.userId } });
+  if (!user) return res.status(404).json({ error: 'not found' });
+  const total = req.body.items.reduce((sum: number, i: Item) => sum + i.price * i.qty, 0);
+  const order = await db.orders.create({ data: { userId: user.id, total } });
+  res.json(order);
+});
+
+// ✅ CORRECT — route extracts inputs, delegates all logic to service
+router.post('/orders', async (req, res) => {
+  const order = await orderService.createOrder({
+    userId: req.body.userId,
+    items: req.body.items,
+  });
+  res.status(201).json(order);
+});
+```
+
+```python
+# ❌ WRONG — service layer depends on FastAPI's Request object
+from fastapi import Request
+
+async def create_order(request: Request) -> Order:
+    body = await request.json()
+    ...  # business logic mixed with framework coupling
+
+# ✅ CORRECT — service accepts plain domain types
+from dataclasses import dataclass
+
+@dataclass
+class CreateOrderInput:
+    user_id: str
+    items: list[OrderItem]
+
+async def create_order(input: CreateOrderInput) -> Order:
+    ...  # pure business logic, testable without an HTTP context
+```
+
+### Database Schema Hygiene
+
+Schema decisions made in migration 001 can never be fully undone — enforce correctness at the database level, not just application level.
+
+**Rules — enforced always:**
+- Add DB-level `NOT NULL` constraints on columns that should never be null. Application code is bypassed by migrations, scripts, and direct DB access.
+- Add DB-level `CHECK` constraints for enum-like string columns — `CHECK (status IN ('pending', 'active', 'cancelled'))`. Application enums don't protect the DB.
+- One ORM model per database table. Multiple models sharing a table cause dual-write bugs and conflicting constraints.
+- When adding a new enum value to an existing column: first add it to the DB CHECK constraint, then deploy, then use it in code — never the reverse.
+- Add a `UNIQUE` constraint at the DB level, not just an application-level uniqueness check, for business keys (email, username, external reference ID).
+- Every foreign key must have a corresponding DB-level `REFERENCES` constraint. Application-layer FK checks break under bulk operations and direct DB access.
+- `created_at` and `updated_at` timestamps: set defaults at DB level (`DEFAULT NOW()`), not only in ORM `beforeCreate` hooks — hooks are bypassed by raw queries.
+
+```sql
+-- ❌ WRONG — only application validates status; DB accepts any string
+CREATE TABLE orders (
+  id UUID PRIMARY KEY,
+  status VARCHAR(50),
+  user_id UUID
+);
+
+-- ✅ CORRECT — DB enforces constraints regardless of how data is written
+CREATE TABLE orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  status VARCHAR(50) NOT NULL CHECK (status IN ('pending', 'processing', 'shipped', 'cancelled')),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+```
+
 ---
 
 ## MODE 7: OBSERVABILITY
