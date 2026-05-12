@@ -830,6 +830,43 @@ API_KEY: str = required("API_KEY")
 PORT: int = int(os.environ.get("PORT", "3000"))
 ```
 
+### Go Standards
+
+```go
+// Constants: ALL_CAPS
+const MaxRetries = 3
+
+// Variables and functions: camelCase
+isAuthenticated := true
+
+// Types and structs: PascalCase
+type UserRepository struct { ... }
+
+// Errors: always check, never ignore
+user, err := repo.FindByID(ctx, userID)
+if err != nil {
+    return fmt.Errorf("FindByID %s: %w", userID, err)
+}
+
+// Context: always first parameter on functions that do I/O
+func (r *UserRepository) FindByID(ctx context.Context, id string) (*User, error)
+
+// ❌ WRONG — ignoring error
+user, _ := repo.FindByID(ctx, userID)
+
+// ❌ WRONG — no context
+func findUser(id string) (*User, error)
+```
+
+```
+Constants:   PascalCase (exported) or camelCase (unexported)
+Variables:   camelCase
+Types:       PascalCase
+Files:       snake_case.go
+Errors:      wrap with fmt.Errorf("context: %w", err) — never discard
+Context:     first arg on every I/O function, always name it ctx
+```
+
 ### Database Query Standards
 
 **Always:**
