@@ -830,6 +830,41 @@ API_KEY: str = required("API_KEY")
 PORT: int = int(os.environ.get("PORT", "3000"))
 ```
 
+### Database Query Standards
+
+**Always:**
+- Use parameterized queries or ORM — never string concatenation with user input
+- Select explicit columns — never `SELECT *` in production code
+- Use transactions for operations that must be atomic
+- Handle the case where a row is not found (null check at the query boundary)
+- Set a query timeout — never let a query run unbounded
+
+```typescript
+// ❌ WRONG
+const user = await db.query(`SELECT * FROM users WHERE id = '${userId}'`);
+
+// ✅ CORRECT
+const user = await db.query<User>(
+  'SELECT id, email, name, role FROM users WHERE id = $1',
+  [userId]
+);
+if (!user.rows[0]) throw new NotFoundError(`User ${userId} not found`);
+```
+
+```python
+# ❌ WRONG
+cursor.execute(f"SELECT * FROM users WHERE id = '{user_id}'")
+
+# ✅ CORRECT
+cursor.execute(
+    "SELECT id, email, name, role FROM users WHERE id = %s",
+    (user_id,)
+)
+row = cursor.fetchone()
+if row is None:
+    raise NotFoundError(f"User {user_id} not found")
+```
+
 ---
 
 ## Quick Reference
