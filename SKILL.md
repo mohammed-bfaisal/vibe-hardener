@@ -99,6 +99,17 @@ find . -name "*.ts" -o -name "*.js" -o -name "*.py" \
 grep -rn "^\s\{12,\}" src/ --include="*.ts" --include="*.js" --include="*.py" \
   | grep -v "^\s*\/\/" | head -20
 
+# Resilience: external calls with no timeout (hangs forever on slow upstream)
+grep -rn "fetch(\|axios\.get(\|axios\.post(\|axios\.put(\|requests\.get(\|requests\.post(" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "timeout\|AbortController\|signal:\|verify=False" \
+  | grep -v "\.test\.\|\.spec\." | head -20
+
+# Resilience: no retry logic on external calls
+grep -rn "await fetch(\|await axios\.\|await.*\.get(\|await.*\.post(" src/ \
+  --include="*.ts" --include="*.js" \
+  | grep -v "retry\|withRetry\|attempt\|\.test\." | head -20
+
 # Dependency hygiene — unused packages
 npx depcheck 2>/dev/null | head -20 || true
 
@@ -142,6 +153,8 @@ Check every file in scope for:
 - Missing error handling on async operations
 - `readFileSync` / `writeFileSync` used in request handlers (blocks the event loop)
 - External HTTP calls with no timeout configured (hangs forever on unresponsive upstream)
+- External calls on critical paths with no retry logic — a single transient 500 from upstream fails the user permanently
+- Non-critical dependency (cache, analytics, feature flag service) failure crashes the app instead of degrading gracefully
 - List endpoints returning unbounded results with no `LIMIT` / `limit` parameter (pagination missing)
 - Event listeners added without corresponding cleanup / removal (memory leak)
 
