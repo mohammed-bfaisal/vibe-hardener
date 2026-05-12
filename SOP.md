@@ -51,7 +51,7 @@ Create a `specs/` directory at the repo root. Each feature gets one file:
 specs/YYYY-MM-DD-feature-name.md
 ```
 
-Use the vibe-hardener spec protocol: `/vibe-hardener spec "description"` — it will interview you and generate this automatically.
+Use the vibe-hardener spec protocol: tell your agent `"use vibe-hardener to spec [description]"` — it will interview you and generate this automatically.
 
 Manual format:
 
@@ -279,13 +279,13 @@ Mandatory passes before deploying:
 
 The `vibe-hardener` skill automates enforcement of this SOP.
 
-| Command | What it does |
+| Prompt | What it does |
 |---|---|
-| `/vibe-hardener audit` | Full codebase scan with severity report |
-| `/vibe-hardener refactor [path]` | Refactor to production standard |
-| `/vibe-hardener security-review` | OWASP Top 10 + dependency scan |
-| `/vibe-hardener spec [description]` | Generate spec before implementing |
-| `/vibe-hardener review` | Pre-PR checklist |
+| `use vibe-hardener to audit` | Full codebase scan with severity report |
+| `use vibe-hardener to refactor [path]` | Refactor to production standard |
+| `use vibe-hardener to security-review` | OWASP Top 10 + dependency scan |
+| `use vibe-hardener to spec [description]` | Generate spec before implementing |
+| `use vibe-hardener to review` | Pre-PR checklist |
 
 ---
 
