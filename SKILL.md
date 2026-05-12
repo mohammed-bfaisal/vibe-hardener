@@ -1787,6 +1787,58 @@ res.status(200).json(newUser);
 
 // ✅ CORRECT
 res.status(201).json({ success: true, data: newUser });
+
+### 10.2 Consistent Error Response Shape
+
+Every error across every endpoint must have the same shape. If some errors return `{ error: "..." }` and others return `{ message: "..." }` and others return `{ errors: [...] }`, clients must write different handling code for each one.
+
+```typescript
+// Standard error shape — use this everywhere
+interface ApiError {
+  error: string;        // machine-readable code: 'USER_NOT_FOUND', 'VALIDATION_FAILED'
+  message: string;      // human-readable description
+  field?: string;       // for validation errors: which field failed
+  details?: unknown;    // optional structured context for debugging
+}
+
+// Centralise in error middleware — never construct error responses by hand in route handlers
+// middleware/errorHandler.ts
+app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof ValidationError) {
+    return res.status(400).json({
+      error: 'VALIDATION_FAILED',
+      message: err.message,
+      field: err.field,
+    });
+  }
+  if (err instanceof NotFoundError) {
+    return res.status(404).json({
+      error: 'NOT_FOUND',
+      message: err.message,
+    });
+  }
+  // Unknown error — log it, don't leak internals
+  logger.error('Unhandled error', { error: err, path: req.path });
+  res.status(500).json({
+    error: 'INTERNAL_ERROR',
+    message: 'An unexpected error occurred',
+  });
+});
+```
+
+```python
+# FastAPI example — centralised exception handlers
+from fastapi import Request
+from fastapi.responses import JSONResponse
+
+@app.exception_handler(ValidationError)
+async def validation_error_handler(request: Request, exc: ValidationError):
+    return JSONResponse(status_code=400, content={
+        "error": "VALIDATION_FAILED",
+        "message": str(exc),
+        "field": exc.field,
+    })
+```
 ```
 
 ---
