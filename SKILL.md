@@ -2173,14 +2173,19 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 ## Quick Reference
 
-| Prompt | What happens |
-|---|---|
-| `use vibe-hardener to audit` | Full audit report with severity levels |
-| `use vibe-hardener to refactor [path]` | Production-grade refactor with plan first |
-| `use vibe-hardener to security-review` | OWASP Top 10 + deps scan |
-| `use vibe-hardener to spec [description]` | Interview → spec → implement gated |
-| `use vibe-hardener to review` | Pre-PR checklist |
-| `use vibe-hardener to show standards` | Print the always-on rules |
+| Prompt | Mode | What happens |
+|---|---|---|
+| `use vibe-hardener to audit` | 1 | Full audit report: HIGH/MEDIUM/LOW + architecture smells |
+| `use vibe-hardener to refactor [path]` | 2 | Production-grade refactor — plan shown before execution |
+| `use vibe-hardener to security-review` | 3 | OWASP Top 10 scan + CRITICAL/HIGH/MEDIUM report |
+| `use vibe-hardener to spec [description]` | 4 | Interview → spec file → approval gate → incremental implementation |
+| `use vibe-hardener to review` | 5 | Pre-PR checklist: quality, arch, security, testing, observability, deps |
+| `use vibe-hardener to show standards` | 6 | Print always-on rules (TS, Python, Go, error patterns, DB) |
+| `use vibe-hardener to observability` | 7 | Structured logging, correlation IDs, health check, error tracking |
+| `use vibe-hardener to testing` | 8 | TDD gate, unit + integration test patterns, test quality checklist |
+| `use vibe-hardener to performance` | 9 | DB indexes, caching, bundle size, memory leaks, pagination |
+| `use vibe-hardener to api-design` | 10 | HTTP status codes, error shape, idempotency, versioning, OpenAPI |
+| `use vibe-hardener to dependency-hygiene` | 11 | Unused deps, license scan, lockfile check, native replacements |
 
 ---
 
