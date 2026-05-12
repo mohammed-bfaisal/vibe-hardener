@@ -1966,6 +1966,16 @@ paths:
 
 ---
 
+## MODE 11: DEPENDENCY HYGIENE
+
+**Trigger:** User adds a new package, asks about dependencies, or the project has not been audited for unused or risky packages.
+
+**Rule:** Every dependency is code you didn't write, don't fully understand, and must maintain forever. Add them deliberately. Remove them aggressively.
+
+This mode covers: unnecessary dependencies, license compatibility, lockfile discipline, and native platform replacements.
+
+---
+
 ## Quick Reference
 
 | Prompt | What happens |
