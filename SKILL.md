@@ -753,6 +753,7 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 - **Never hardcode configuration.** Any value that differs between environments goes in env/config.
 - **Never use console.log in production code.** Use a structured logger. `console.log` is not searchable, not filterable, and not alertable.
 - **Every significant operation must be observable.** If something goes wrong in production and you can't diagnose it from logs alone, the code isn't done.
+- **New business logic requires tests.** A function with branching logic and no test is a future bug waiting for the right conditions.
 - **Never swallow errors silently.** Every catch must log with context or rethrow with context. An empty catch block is always a bug.
 - **Never accept unvalidated user input.** Validate at the boundary before it reaches business logic.
 - **Fail fast on missing config.** At startup, not silently in production at 3am.
