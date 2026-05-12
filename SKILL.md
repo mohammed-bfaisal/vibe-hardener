@@ -66,6 +66,12 @@ grep -rn "process\.exit(" src/ --include="*.ts" --include="*.js" 2>/dev/null || 
 grep -rn "readFileSync\|writeFileSync\|existsSync\|mkdirSync" src/ \
   --include="*.ts" --include="*.js" 2>/dev/null || true
 
+# React: key={index} anti-pattern
+grep -rn "key={index}\|key={i}\|key={idx}" src/ --include="*.tsx" --include="*.jsx" 2>/dev/null || true
+
+# React: dangerouslySetInnerHTML usage
+grep -rn "dangerouslySetInnerHTML" src/ --include="*.tsx" --include="*.jsx" 2>/dev/null || true
+
 # God files (files over 300 lines — single-responsibility violation)
 find . -name "*.ts" -o -name "*.js" -o -name "*.py" \
   | grep -v node_modules | grep -v ".test." | grep -v ".spec." \
@@ -103,6 +109,14 @@ Check every file in scope for:
 - Missing error handling on async operations
 - `readFileSync` / `writeFileSync` used in request handlers (blocks the event loop)
 - External HTTP calls with no timeout configured (hangs forever on unresponsive upstream)
+
+**🟡 MEDIUM — React-specific (skip if project has no React)**
+- `key={index}` on list items — defeats reconciliation, causes subtle UI bugs
+- `useEffect` with an empty `[]` dependency array that references props or state (stale closure)
+- Data fetching directly inside a component body instead of a custom hook or data layer
+- State mutations: `array.push()`, `object.key = value` directly on state variables
+- Event handlers defined inline in JSX on every render without `useCallback`
+- `dangerouslySetInnerHTML` without sanitizing content first
 
 **🟢 LOW — Tech debt queue**
 - Single-letter variable names outside loop counters
