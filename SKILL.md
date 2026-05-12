@@ -497,6 +497,7 @@ grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
 □ npm audit / pip-audit — no new critical or high CVEs introduced
 □ Rate limiting on auth endpoints (login, register, password reset)
 □ LLM prompts: user-supplied content sanitized, not injected directly
+□ Auth token/secret comparisons use timing-safe equality (crypto.timingSafeEqual / hmac.compare_digest), not ===  / ==
 ```
 
 **🟡 MEDIUM — Fix this sprint**
