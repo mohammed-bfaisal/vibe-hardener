@@ -450,6 +450,12 @@ pip-audit
 grep -rn "fetch(\|axios.get(\|requests.get(" . --include="*.ts" --include="*.js" --include="*.py" \
   | grep -v "config\.\|env\.\|BASE_URL\|process.env" | head -20
 
+# CSRF protection presence (csurf, csrf-csrf, or equivalent)
+grep -rn "csrf\|csurf\|doubleCsrf" . --include="*.ts" --include="*.js" 2>/dev/null | head -10
+
+# Content-Security-Policy header
+grep -rn "Content-Security-Policy\|contentSecurityPolicy" . --include="*.ts" --include="*.js" 2>/dev/null | head -5
+
 # Cookie flags — missing httpOnly/secure/sameSite
 grep -rn "res.cookie\|setCookie\|set-cookie" . --include="*.ts" --include="*.js" \
   | grep -v "httpOnly\|HttpOnly" | head -20
@@ -483,6 +489,8 @@ grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
 □ Parameterized queries / ORM used for all DB operations
 □ Authentication middleware applied to all protected routes
 □ Authorization checked in service layer (not only at route level)
+□ CSRF protection on all state-mutating endpoints (POST/PUT/PATCH/DELETE) that use cookie auth
+□ Content-Security-Policy header configured — prevents XSS escalation even if injection occurs
 □ Error messages don't expose stack traces or internal paths to client
 □ No tokens, passwords, or PII in log statements
 □ All new npm/pip packages verified to exist (not AI hallucinated)
