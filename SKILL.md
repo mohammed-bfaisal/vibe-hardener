@@ -321,6 +321,55 @@ interface CreateUserInput {
 async function createUser(input: CreateUserInput): Promise<User> { ... }
 ```
 
+**6. Flatten Promise Chains to async/await**
+
+```typescript
+// BEFORE (vibe — hard to follow, error handling fragile)
+function loadUserData(userId: string) {
+  return fetchUser(userId)
+    .then(user => {
+      return fetchPermissions(user.id)
+        .then(permissions => {
+          return { user, permissions };
+        });
+    })
+    .catch(err => {
+      console.log(err);
+    });
+}
+
+// AFTER (production — linear, typed, explicit error handling)
+async function loadUserData(userId: string): Promise<{ user: User; permissions: Permission[] }> {
+  try {
+    const user = await fetchUser(userId);
+    const permissions = await fetchPermissions(user.id);
+    return { user, permissions };
+  } catch (error) {
+    logger.error('loadUserData failed', { userId, error });
+    throw new Error(`Failed to load user data: ${error instanceof Error ? error.message : 'unknown'}`);
+  }
+}
+```
+
+```python
+# Python equivalent — avoid callback-style patterns
+# BEFORE
+def load_user_data(user_id: str):
+    user = fetch_user(user_id)  # no error handling
+    permissions = fetch_permissions(user.id)
+    return {"user": user, "permissions": permissions}
+
+# AFTER
+async def load_user_data(user_id: str) -> dict:
+    try:
+        user = await fetch_user(user_id)
+        permissions = await fetch_permissions(user.id)
+        return {"user": user, "permissions": permissions}
+    except FetchError as e:
+        logger.error("load_user_data failed", extra={"user_id": user_id, "error": str(e)})
+        raise RuntimeError(f"Failed to load user data: {e}") from e
+```
+
 ### What NOT to Refactor
 
 Do not:
