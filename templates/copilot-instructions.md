@@ -50,9 +50,30 @@ const required = (key: string) => {
 };
 ```
 
+## Security — Always Flag
+
+- Never pass user-controlled values directly to `fetch()`, `http.get()`, or `requests.get()` (SSRF)
+- Never use user input in `path.join()`, `readFile()`, or any file path without sanitization (path traversal)
+- Never use `===` / `==` to compare secrets, tokens, or passwords — use timing-safe equality
+- Always use parameterized queries — never string-concatenated SQL
+- Cookies with `res.cookie()` must include `httpOnly: true, secure: true, sameSite: 'strict'`
+
+## Database
+
+- Never `SELECT *` — always list explicit columns
+- Always handle the null/not-found case at the query boundary
+- Wrap multi-step operations in transactions
+
+## React
+
+- Never use `key={index}` on list items — use a stable unique identifier
+- Never use `dangerouslySetInnerHTML` without sanitizing content
+- Never mutate state directly — always return new references
+
 ## Before Suggesting New Features
 
-Check if a spec exists in `specs/`. If not, suggest creating one before implementing.
+If the user describes a new feature, suggest they create a spec first:
+`"Before implementing, let's define acceptance criteria in specs/YYYY-MM-DD-feature-name.md"`
 
 ## Naming
 
