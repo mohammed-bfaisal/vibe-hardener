@@ -1751,6 +1751,44 @@ async function getOrders(params: PaginationParams): Promise<{
 
 This mode covers: HTTP status codes, error response shape, pagination, idempotency, versioning, and documentation.
 
+### 10.1 HTTP Status Codes — Use Them Correctly
+
+```
+200 OK          GET, PUT, PATCH succeeded. Body contains the result.
+201 Created     POST created a resource. Include Location header or the new resource in body.
+204 No Content  DELETE succeeded. No body.
+400 Bad Request Client sent invalid data. Body explains what was wrong.
+401 Unauthorized  No valid credentials. Client must authenticate.
+403 Forbidden   Credentials valid but not authorised for this resource.
+404 Not Found   Resource does not exist. (Also use to avoid leaking existence of private resources)
+409 Conflict    Request conflicts with current state (duplicate, version mismatch).
+422 Unprocessable Entity  Syntactically valid but semantically wrong (validation failure).
+429 Too Many Requests  Rate limited. Include Retry-After header.
+500 Internal Server Error  Something broke on the server. Never expose stack traces.
+503 Service Unavailable   Temporarily down. Include Retry-After if known.
+```
+
+**Common mistakes to flag:**
+```typescript
+// ❌ WRONG — returning 200 for everything and encoding status in body
+res.status(200).json({ success: false, error: 'User not found' });
+
+// ✅ CORRECT — HTTP status carries the primary signal
+res.status(404).json({ error: 'USER_NOT_FOUND', message: 'No user with that ID exists' });
+
+// ❌ WRONG — using 500 for client errors
+if (!req.body.email) res.status(500).json({ error: 'Missing email' });
+
+// ✅ CORRECT
+if (!req.body.email) res.status(400).json({ error: 'MISSING_FIELD', field: 'email' });
+
+// ❌ WRONG — 200 on POST that creates
+res.status(200).json(newUser);
+
+// ✅ CORRECT
+res.status(201).json({ success: true, data: newUser });
+```
+
 ---
 
 ## Quick Reference
