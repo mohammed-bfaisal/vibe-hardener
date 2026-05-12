@@ -98,6 +98,21 @@ find . -name "*.ts" -o -name "*.js" -o -name "*.py" \
 # Deep nesting — more than 3 levels of indentation blocks
 grep -rn "^\s\{12,\}" src/ --include="*.ts" --include="*.js" --include="*.py" \
   | grep -v "^\s*\/\/" | head -20
+
+# Dependency hygiene — unused packages
+npx depcheck 2>/dev/null | head -20 || true
+
+# Dependency hygiene — unused exports and imports (TS/JS)
+npx knip 2>/dev/null | head -20 || true
+
+# License scan — flag GPL/AGPL
+npx license-checker --summary 2>/dev/null | head -20 || true
+
+# Lockfile committed?
+git ls-files | grep -E "package-lock\.json|yarn\.lock|pnpm-lock\.yaml|poetry\.lock|Pipfile\.lock"
+
+# Floating versions in package.json
+grep -E '"[^"]+": "(\*|latest|\^[0-9]|~[0-9])' package.json 2>/dev/null | head -10 || true
 ```
 
 ### Step 2 — Manual Pattern Scan
