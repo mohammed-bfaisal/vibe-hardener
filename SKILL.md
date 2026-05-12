@@ -1394,6 +1394,109 @@ def scrub_sensitive_data(event, hint):
 - [ ] `SENTRY_DSN` (or equivalent) in `.env.example`
 - [ ] Error tracker environment set correctly (dev errors don't pollute prod alerts)
 
+### 7.6 Metrics and Alerting
+
+**Why this section exists:** Logs tell you *what happened* on a specific event. Error tracking tells you about *crashes*. Metrics tell you about *trends* — and trends are how you know something is degrading before it fully crashes. Without metrics you cannot answer "what is the current error rate?" or "what was p95 latency over the last hour?" without reading raw logs. Seroter's production-readiness research identifies metrics instrumentation as one of three critical observability gaps in vibe-coded apps.
+
+Three metrics every backend service must expose:
+
+```
+Request rate    — requests/second per endpoint and status code
+Error rate      — percentage of 4xx/5xx — the primary health signal
+Latency         — p50/p95/p99 response time — the user experience signal
+```
+
+```typescript
+// lib/metrics.ts — prom-client (Prometheus-compatible)
+import client from 'prom-client';
+
+// Collect default Node.js metrics: CPU, memory, event loop lag, GC
+client.collectDefaultMetrics({ prefix: 'app_' });
+
+export const httpRequestDuration = new client.Histogram({
+  name: 'http_request_duration_seconds',
+  help: 'HTTP request duration in seconds',
+  labelNames: ['method', 'route', 'status_code'],
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5],
+});
+
+export const httpRequestsTotal = new client.Counter({
+  name: 'http_requests_total',
+  help: 'Total HTTP requests',
+  labelNames: ['method', 'route', 'status_code'],
+});
+
+// middleware/metrics.ts — attach to every route before other middleware
+export function metricsMiddleware(req: Request, res: Response, next: NextFunction) {
+  const start = Date.now();
+  res.on('finish', () => {
+    const durationSeconds = (Date.now() - start) / 1000;
+    const route = req.route?.path ?? 'unknown';
+    httpRequestDuration.observe(
+      { method: req.method, route, status_code: String(res.statusCode) },
+      durationSeconds,
+    );
+    httpRequestsTotal.inc({ method: req.method, route, status_code: String(res.statusCode) });
+  });
+  next();
+}
+
+// routes/metrics.ts — Prometheus scrapes this endpoint
+router.get('/metrics', async (_req, res) => {
+  res.set('Content-Type', client.register.contentType);
+  res.send(await client.register.metrics());
+});
+```
+
+```python
+# Python — prometheus-client (FastAPI example)
+from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
+from starlette.middleware.base import BaseHTTPMiddleware
+import time
+
+REQUEST_COUNT = Counter(
+    'http_requests_total', 'Total HTTP requests',
+    ['method', 'endpoint', 'status_code'],
+)
+REQUEST_LATENCY = Histogram(
+    'http_request_duration_seconds', 'HTTP request duration',
+    ['method', 'endpoint'],
+    buckets=[.005, .01, .025, .05, .1, .25, .5, 1, 2.5, 5],
+)
+
+class MetricsMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        duration = time.time() - start
+        REQUEST_COUNT.labels(request.method, request.url.path, str(response.status_code)).inc()
+        REQUEST_LATENCY.labels(request.method, request.url.path).observe(duration)
+        return response
+
+@app.get('/metrics')
+async def metrics():
+    return Response(generate_latest(), media_type=CONTENT_TYPE_LATEST)
+```
+
+**Alerting thresholds — baseline (adjust to your SLA):**
+
+```
+Condition                                    Severity    Action
+────────────────────────────────────────────────────────────────────────
+error_rate > 1% sustained over 5 minutes    WARNING     Notify on-call
+error_rate > 5% sustained over 1 minute     CRITICAL    Page on-call immediately
+p95 latency > 1s sustained over 5 minutes   WARNING     Notify on-call
+p95 latency > 3s sustained over 1 minute    CRITICAL    Page on-call immediately
+No requests for 5 minutes (expected traffic) WARNING    Check if service is down
+```
+
+**Metrics checklist:**
+- [ ] `prom-client` / `prometheus-client` installed and `collectDefaultMetrics()` called
+- [ ] Request duration histogram attached as middleware on all routes
+- [ ] `/metrics` endpoint exposed (protected if public-facing — scrape from internal network only)
+- [ ] At minimum 3 alerts configured: error rate warning, error rate critical, latency critical
+- [ ] `METRICS_PORT` or equivalent in `.env.example` if metrics run on a separate port
+
 ---
 
 ## MODE 8: TESTING
