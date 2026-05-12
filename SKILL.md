@@ -1451,6 +1451,16 @@ A test suite can have 100% coverage and still be worthless. Apply this checklist
 
 ---
 
+## MODE 9: PERFORMANCE
+
+**Trigger:** User asks about performance, slowness, optimisation, scaling, or "why is this slow." Also activate when reviewing any endpoint that queries a database or calls an external service.
+
+**Rule:** Don't optimise prematurely. But don't ship known performance problems either. This mode identifies problems that are cheap to fix now and expensive to fix after they're in production under load.
+
+This mode covers five areas: database indexing, caching, frontend bundle size, memory leaks, and missing pagination.
+
+---
+
 ## Quick Reference
 
 | Prompt | What happens |
