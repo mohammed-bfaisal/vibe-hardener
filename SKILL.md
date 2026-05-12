@@ -3784,6 +3784,9 @@ END $$;
 | `use vibe-hardener to performance` | 9 | DB indexes, caching, bundle size, memory leaks, pagination |
 | `use vibe-hardener to api-design` | 10 | HTTP status codes, error shape, idempotency, versioning, OpenAPI |
 | `use vibe-hardener to dependency-hygiene` | 11 | Unused deps, license scan, lockfile check, native replacements |
+| `use vibe-hardener to db-migrations` | 12 | Safe migration review: lock analysis, expand/migrate/contract, ORM rules |
+| `use vibe-hardener to cicd` | 13 | Dockerfile, container security, .env.example, GitHub Actions workflow |
+| `use vibe-hardener to llm-engineering` | 14 | Prompt injection, cost control, output validation, prompt versioning |
 
 ---
 
