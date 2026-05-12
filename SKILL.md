@@ -1338,6 +1338,83 @@ class TestCalculateDiscount:
 - Mock external dependencies (DB, HTTP, filesystem) at the boundary — never in the middle of business logic
 - Never test implementation details — test behaviour (what it does, not how)
 
+### 8.4 Integration Test Patterns
+
+An integration test tests that two or more real components work together. It hits a real database (test instance), makes real HTTP calls to the service, and uses real file I/O. It does not mock things that are in scope.
+
+```typescript
+// ✅ CORRECT — hits real DB, tests the full stack for one endpoint
+import request from 'supertest';
+import { app } from '../app';
+import { db } from '../db';
+
+beforeEach(async () => {
+  await db.query('BEGIN');
+});
+
+afterEach(async () => {
+  await db.query('ROLLBACK'); // no test pollution
+});
+
+describe('POST /users', () => {
+  it('creates a user and returns 201', async () => {
+    const res = await request(app)
+      .post('/users')
+      .send({ email: 'test@example.com', name: 'Test User', role: 'user' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.data.email).toBe('test@example.com');
+    expect(res.body.data.id).toBeDefined();
+
+    // Verify it actually persisted
+    const row = await db.query('SELECT * FROM users WHERE email = $1', ['test@example.com']);
+    expect(row.rows).toHaveLength(1);
+  });
+
+  it('returns 400 on invalid email', async () => {
+    const res = await request(app)
+      .post('/users')
+      .send({ email: 'not-an-email', name: 'Test' });
+    expect(res.status).toBe(400);
+  });
+
+  it('returns 409 on duplicate email', async () => {
+    await request(app).post('/users').send({ email: 'dupe@example.com', name: 'First' });
+    const res = await request(app).post('/users').send({ email: 'dupe@example.com', name: 'Second' });
+    expect(res.status).toBe(409);
+  });
+});
+```
+
+```python
+# ✅ CORRECT — pytest + httpx + real DB in transaction
+import pytest
+from httpx import AsyncClient
+from app.main import app
+
+@pytest.fixture(autouse=True)
+async def rollback_transaction(db_session):
+    yield
+    await db_session.rollback()  # no test pollution
+
+@pytest.mark.anyio
+async def test_create_user_returns_201():
+    async with AsyncClient(app=app, base_url="http://test") as client:
+        response = await client.post("/users", json={
+            "email": "test@example.com",
+            "name": "Test User",
+            "role": "user"
+        })
+    assert response.status_code == 201
+    assert response.json()["data"]["email"] == "test@example.com"
+```
+
+**Integration test rules:**
+- Use transactions and rollback after each test — never leave data in the DB between tests
+- Use a dedicated test database — never run integration tests against dev or prod
+- Test the actual HTTP response shape — it's what consumers depend on
+- Cover: happy path, validation error, auth error, not-found, conflict (duplicate)
+
 ---
 
 ## Quick Reference
