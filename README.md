@@ -47,6 +47,9 @@ A single `SKILL.md` file — an agent skill — that gives any AI coding agent t
 - **Performance** — database index analysis with `EXPLAIN ANALYZE`, cache-aside pattern with Redis, frontend bundle optimization, memory leak detection, cursor-based pagination
 - **API design** — HTTP status code semantics, consistent error response shape with centralised handler, idempotency keys, versioning with Sunset headers, OpenAPI generation
 - **Dependency hygiene** — unused package detection, license compatibility scan (blocks GPL in commercial projects), lockfile discipline, native platform replacements for bloated packages
+- **Database migrations** — safe migration review protocol: lock analysis, expand/migrate/contract pattern, ORM-specific pitfalls (Prisma, Alembic, Django), approval gate before destructive changes
+- **CI/CD** — multi-stage Dockerfile with non-root user, container security hardening, `.env.example` discipline, GitHub Actions workflow with `npm ci`, coverage thresholds, and concurrency cancellation
+- **LLM application engineering** — prompt injection prevention, token budget + iteration cap enforcement, output validation with zod/pydantic before use, prompt versioning with versioned files
 
 Works with TypeScript, JavaScript, Python, and Go. Degrades gracefully when the agent has no shell access.
 
@@ -135,6 +138,15 @@ use vibe-hardener to api-design
 
 use vibe-hardener to dependency-hygiene
 → Unused deps, license scan, lockfile check, native platform replacements
+
+use vibe-hardener to db-migrations
+→ Review pending migrations for lock risk, destructive ops, and ORM pitfalls before they run
+
+use vibe-hardener to cicd
+→ Dockerfile audit, container security, .env.example check, GitHub Actions workflow generation
+
+use vibe-hardener to llm-engineering
+→ Prompt injection scan, cost control, output schema validation, prompt versioning setup
 ```
 
 ### In any agent
@@ -169,6 +181,7 @@ Runs scan commands first (grep, git log, npm audit, depcheck), then a manual pat
 - `console.log` / `print()` in production paths
 - Hardcoded config values (URLs, limits, timeouts, magic numbers)
 - Functions over 50 lines
+- Functions with cyclomatic complexity >10 — a 40-line function with 18 execution paths is unmaintainable (line count alone misses this)
 - N+1 query/fetch patterns
 - Duplicate business logic
 - No input validation on endpoints
@@ -184,6 +197,7 @@ Runs scan commands first (grep, git log, npm audit, depcheck), then a manual pat
 **Architecture smells**
 - God files over 300 lines
 - Business logic in route handlers
+- Framework objects (`Request`, `Response`, ORM sessions) crossing layer boundaries into service or domain code
 - Deep nesting (3+ levels)
 - Circular imports
 - Config scattered instead of centrally loaded
@@ -342,6 +356,47 @@ Walks through four areas for any service going to production:
 - **License scan** — runs `license-checker` and flags any GPL/AGPL/SSPL dependency in a commercial project before it creates a legal obligation to open-source your codebase
 - **Lockfile discipline** — checks the lockfile is committed, identifies floating `*` / `latest` versions, and sets rules for which packages need exact pinning (auth libraries, crypto, validators)
 - **Native platform replacements** — maps common bloated packages to their zero-cost native equivalents: lodash → native array methods, moment → `Intl.DateTimeFormat`, uuid → `crypto.randomUUID()`, node-fetch → global `fetch`, mkdirp → `fs.mkdir({ recursive: true })`
+
+---
+
+## What the database migrations mode does
+
+Safe migrations are the highest-stakes operation in a production system — a bad migration can lock a table for minutes and take the service down.
+
+- **Lock analysis** — identifies operations that hold `ACCESS EXCLUSIVE` locks (blocking all reads and writes) vs `SHARE UPDATE EXCLUSIVE` (blocking only DDL), and flags any migration with a long-duration lock on a high-traffic table
+- **Expand/migrate/contract** — enforces the three-phase pattern for zero-downtime schema changes: add new column (expand), backfill data, deploy code that writes to both, then remove old column (contract)
+- **Safe patterns** — `CREATE INDEX CONCURRENTLY` instead of `CREATE INDEX`, `ADD COLUMN` with a separate `ALTER COLUMN SET DEFAULT` to avoid table rewrites, `DROP COLUMN` only after code no longer references it
+- **ORM-specific rules** — Prisma shadow database discipline, Alembic `--autogenerate` review before running, Django `RunPython` with `atomic=False` for large backfills
+- **Approval gate** — reviews migration, states lock type and estimated risk, asks for explicit sign-off before running anything
+
+---
+
+## What the CI/CD mode does
+
+- **Dockerfile** — generates a multi-stage build (build stage + lean runtime stage) that strips devDependencies, reduces image size, and fails the build if the app exits unexpectedly
+- **Container security** — adds non-root user (`RUN addgroup/adduser`, `USER appuser`), pins base image to a digest not a moving tag, adds `.dockerignore` to exclude `.git`, `node_modules`, `.env`, test files
+- **`.env.example`** — enforces the standard: `.env` is gitignored, `.env.example` is committed with every key and a safe placeholder value, and CI fails if `.env.example` is out of sync with required env vars
+- **GitHub Actions** — generates a workflow with `npm ci` (not `npm install`), split lint + test + build jobs, matrix strategy for Node/Python version coverage, concurrency cancellation (stop old run when new push arrives), and coverage threshold enforcement
+
+---
+
+## What the LLM engineering mode does
+
+For codebases that call AI APIs — the four failure modes that ship silently:
+
+- **Prompt injection** — flags every place where user-supplied content is interpolated directly into the system prompt string. User input must be isolated in a clearly bounded `[USER INPUT]` block, never in the instruction half of the system message.
+- **Cost control** — identifies unbounded loops that call AI APIs (token spend scales with iteration count), enforces per-request token budgets with `max_tokens`, and adds iteration caps so a runaway agent loop doesn't drain the budget silently
+- **Output validation** — AI responses are untyped text; treating them as structured data without validation causes silent data corruption. Every AI output must be parsed and validated with zod (TypeScript) or pydantic (Python) before use, with a defined fallback for malformed responses
+- **Prompt versioning** — prompts longer than 2 lines belong in their own versioned file (`prompts/summarisation-v2.ts`), not inline in application code. Adds rules for naming, unit-testing prompt content, and logging which version was used per call so regressions can be traced
+
+---
+
+## What the standards mode covers (new additions)
+
+Beyond the language-specific rules (TypeScript, Python, Go), the always-on standards now enforce two additional architectural invariants:
+
+- **Interface boundary rules** — routes do routing only, services accept plain domain types (never `Request`/`Response`), repositories hide ORM details from callers. Prevents framework coupling from spreading into business logic, which makes services untestable without spinning up HTTP.
+- **Database schema hygiene** — `NOT NULL`, `CHECK`, `UNIQUE`, and `REFERENCES` constraints enforced at DB level (not just in ORM hooks), one model per table, enum addition order (DB constraint first, then code). Application-layer checks are bypassed by migrations, scripts, and direct DB access.
 
 ---
 
