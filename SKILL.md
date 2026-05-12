@@ -912,6 +912,31 @@ if row is None:
 
 This mode has four sections: structured logging, correlation IDs, health checks, and error tracking. Work through all four for any service going to production.
 
+### 7.1 Log Levels — Use Them Correctly
+
+```
+ERROR   Something broke and requires immediate attention. Wakes people up.
+        Use for: unhandled exceptions, failed external calls, data corruption
+        Never use for: expected validation failures, 404s
+
+WARN    Something unexpected happened but the system recovered.
+        Use for: retried operations, deprecated API calls, slow queries, rate limits hit
+        Never use for: normal business events
+
+INFO    A significant business event completed successfully.
+        Use for: request received, order placed, user created, job finished
+        Not for every function call — only meaningful state transitions
+
+DEBUG   Data useful for diagnosing a specific problem. Off in production.
+        Use for: intermediate values, branch decisions, full request/response bodies
+```
+
+**Rules:**
+- Every ERROR log must include enough context to reproduce the problem without asking the user
+- Never log at ERROR for something you handled gracefully — that's WARN or INFO
+- Never log sensitive data (passwords, tokens, PII, card numbers) at any level
+- Production log level: INFO minimum. DEBUG only in dev or via feature flag
+
 ---
 
 ## Quick Reference
