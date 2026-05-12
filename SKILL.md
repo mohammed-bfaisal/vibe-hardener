@@ -1118,6 +1118,72 @@ async def health_check(db=Depends(get_db)):
 - Never put business logic behind `/health` — it must respond in under 500ms
 - Never expose internal IP addresses, stack traces, or secrets in the health response
 
+### 7.5 Error Tracking Integration
+
+Logs tell you something happened. Error tracking (Sentry, Bugsnag, Rollbar) tells you how often it's happening, which users it's affecting, and shows you the full stack trace with local variable values at the time of the crash.
+
+```typescript
+// lib/errorTracker.ts
+import * as Sentry from '@sentry/node';
+
+export function initErrorTracking() {
+  if (!process.env.SENTRY_DSN) return; // graceful no-op in dev
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    environment: process.env.NODE_ENV,
+    // Never send PII to Sentry
+    beforeSend(event) {
+      if (event.request?.data) {
+        delete event.request.data.password;
+        delete event.request.data.token;
+        delete event.request.data.cardNumber;
+      }
+      return event;
+    },
+  });
+}
+
+// Capture with context — so Sentry groups it correctly
+export function captureError(error: Error, context: Record<string, unknown> = {}) {
+  Sentry.withScope(scope => {
+    Object.entries(context).forEach(([key, value]) => scope.setExtra(key, value));
+    Sentry.captureException(error);
+  });
+}
+
+// Express error handler (must be last middleware)
+export const sentryErrorHandler = Sentry.Handlers.errorHandler();
+```
+
+```python
+# lib/error_tracker.py
+import sentry_sdk
+import os
+
+def init_error_tracking():
+    dsn = os.environ.get("SENTRY_DSN")
+    if not dsn:
+        return  # graceful no-op in dev
+    sentry_sdk.init(
+        dsn=dsn,
+        environment=os.environ.get("ENVIRONMENT", "development"),
+        before_send=scrub_sensitive_data,
+    )
+
+def scrub_sensitive_data(event, hint):
+    if "request" in event and "data" in event["request"]:
+        for key in ("password", "token", "card_number"):
+            event["request"]["data"].pop(key, None)
+    return event
+```
+
+**Checklist before saying observability is done:**
+- [ ] Error tracker initialized at app startup
+- [ ] All unhandled exceptions route to error tracker
+- [ ] PII scrubbed before sending to error tracker
+- [ ] `SENTRY_DSN` (or equivalent) in `.env.example`
+- [ ] Error tracker environment set correctly (dev errors don't pollute prod alerts)
+
 ---
 
 ## Quick Reference
