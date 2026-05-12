@@ -595,8 +595,18 @@ Output this file to `specs/YYYY-MM-DD-feature-name.md`:
 - [Edge case 1] → [Expected behavior]
 - [Edge case 2] → [Expected behavior]
 
+## API Contract (if this feature adds or changes endpoints)
+```
+METHOD /path
+Request:  { field: type, field: type }
+Response: { field: type, field: type }
+Errors:   400 [reason], 401 [reason], 404 [reason]
+```
+
 ## Data / API Changes
-[Schema changes, new endpoints, new env vars — or "None"]
+- Schema changes: [table/collection, migration needed: yes/no]
+- New env vars: [VAR_NAME=description, or "None"]
+- Breaking changes: [yes/no — if yes, migration plan required]
 ```
 
 ### Step 3 — Gate on Approval
