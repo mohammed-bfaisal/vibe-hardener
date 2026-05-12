@@ -439,6 +439,108 @@ async def load_user_data(user_id: str) -> dict:
         raise RuntimeError(f"Failed to load user data: {e}") from e
 ```
 
+**8. Add Resilience Patterns**
+
+Why this transformation exists: error handling (catch → log → rethrow) covers the case where *your code* throws. Resilience covers the case where *something downstream* is slow, unavailable, or returns garbage. AI agents handle the first case but almost never the second. A vibe-coded service that calls three external APIs will take down the request if any one of them is slow or flaky, because there is no timeout, no retry, and no fallback.
+
+**Retry with exponential backoff + jitter**
+
+```typescript
+// ❌ WRONG — a single transient 500 from the upstream fails the user permanently
+const result = await externalService.call(data);
+
+// ✅ CORRECT — retries on transient failures, backs off to avoid hammering upstream
+async function withRetry<T>(
+  fn: () => Promise<T>,
+  maxAttempts = 3,
+  baseDelayMs = 100,
+): Promise<T> {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      const isLastAttempt = attempt === maxAttempts;
+      if (isLastAttempt) throw error;
+      // Exponential backoff with jitter — prevents thundering herd
+      const delay = baseDelayMs * 2 ** (attempt - 1) + Math.random() * 100;
+      logger.warn('Retrying after transient failure', { attempt, delayMs: delay, error });
+      await new Promise(resolve => setTimeout(resolve, delay));
+    }
+  }
+  throw new Error('unreachable');
+}
+
+// Usage
+const result = await withRetry(() => externalService.call(data));
+```
+
+```python
+# Python equivalent
+import asyncio
+import random
+
+async def with_retry(fn, max_attempts: int = 3, base_delay_ms: float = 100):
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await fn()
+        except Exception as e:
+            if attempt == max_attempts:
+                raise
+            delay = (base_delay_ms * (2 ** (attempt - 1)) + random.uniform(0, 100)) / 1000
+            logger.warning("Retrying after transient failure", extra={"attempt": attempt, "delay_s": delay})
+            await asyncio.sleep(delay)
+```
+
+**Timeout + fallback**
+
+```typescript
+// ❌ WRONG — hangs indefinitely if upstream never responds
+const data = await fetch(upstreamUrl).then(r => r.json());
+
+// ✅ CORRECT — bounded wait, defined behaviour on timeout
+const controller = new AbortController();
+const timeoutId = setTimeout(() => controller.abort(), 3_000); // 3s max
+try {
+  const res = await fetch(upstreamUrl, { signal: controller.signal });
+  if (!res.ok) throw new Error(`Upstream returned ${res.status}`);
+  return await res.json() as UpstreamResponse;
+} catch (error) {
+  if ((error as Error).name === 'AbortError') {
+    logger.warn('Upstream timeout — using fallback', { url: upstreamUrl });
+    return FALLBACK_VALUE; // a handled degradation, not an error
+  }
+  throw error;
+} finally {
+  clearTimeout(timeoutId);
+}
+```
+
+**Graceful degradation**
+
+```typescript
+// ❌ WRONG — Redis being down takes the whole feature down
+const permissions = JSON.parse(await redis.get(`perms:${userId}`) ?? 'null');
+return permissions;
+
+// ✅ CORRECT — cache is a performance optimisation, not a dependency
+let permissions: Permission[] | null = null;
+try {
+  const cached = await redis.get(`perms:${userId}`);
+  permissions = cached ? JSON.parse(cached) : null;
+} catch (cacheError) {
+  // Cache unavailable — not a crash, a fallback to source of truth
+  logger.warn('Cache unavailable, falling back to DB', { userId });
+}
+permissions ??= await permissionRepository.findByUserId(userId);
+return permissions;
+```
+
+**Rules:**
+- Retry only on transient errors (network errors, 429, 503) — never retry 400/401/404 (those will never succeed)
+- Always add jitter to backoff — without it, every client retries at the same moment (thundering herd)
+- Every external call must have a timeout — the default for most HTTP clients is no timeout
+- Non-critical dependencies (cache, feature flags, analytics) must degrade gracefully — their failure must not crash the app
+
 ### What NOT to Refactor
 
 Do not:
