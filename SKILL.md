@@ -2428,6 +2428,59 @@ docker scout cve myapp:latest 2>/dev/null || \
 docker history --no-trunc myapp:latest | grep -iE "secret|password|token|key" || true
 ```
 
+### 13.3 .env.example Standard
+
+Every environment variable used anywhere in the codebase must have an entry in `.env.example`. This file is the contract between the code and whoever deploys it. If a variable exists in code but not in `.env.example`, the next person deploying will hit a silent runtime error with no guidance on how to fix it.
+
+**Generate `.env.example` if it doesn't exist or is out of sync:**
+
+```bash
+# Find every env var referenced in source that may be missing from .env.example
+grep -rh "process\.env\.\|os\.environ\.\|os\.getenv(" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -oP "process\.env\.\K\w+|os\.environ\['\K[^']+|os\.getenv\('\K[^']+" \
+  | sort -u
+# Compare output against .env.example to find missing entries
+```
+
+**Template — every entry must have a description comment:**
+
+```bash
+# .env.example — copy to .env and fill in real values before running
+
+# ── Database ──────────────────────────────────────────────────────────────────
+DATABASE_URL=postgresql://user:password@localhost:5432/myapp_dev
+# Format: postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+# Production: use a connection pooler URL (PgBouncer / Supabase pooler)
+
+# ── Authentication ────────────────────────────────────────────────────────────
+JWT_SECRET=change-me-to-a-random-64-char-string-before-deploying
+# Generate: openssl rand -hex 32
+JWT_EXPIRES_IN=7d
+
+# ── External APIs ─────────────────────────────────────────────────────────────
+OPENAI_API_KEY=sk-proj-...
+# Get from: https://platform.openai.com/api-keys
+
+STRIPE_SECRET_KEY=sk_test_...
+# Use sk_test_ for non-production. Get from: https://dashboard.stripe.com/apikeys
+
+# ── Observability (optional locally, required in production) ──────────────────
+SENTRY_DSN=
+# Get from Sentry project settings. Leave empty to disable error tracking locally.
+
+# ── Server ────────────────────────────────────────────────────────────────────
+PORT=3000
+NODE_ENV=development
+```
+
+**Rules:**
+- Every variable in code must be in `.env.example` — add a CI check: `grep process.env src/ | extract var names | diff against .env.example`
+- Sensitive values must be obviously fake: `change-me-...`, `sk_test_...`, not real values
+- Every entry needs a comment explaining where to get the real value
+- Optional vars must have a comment explaining what disabling them does (empty = feature disabled, etc.)
+- `.env` must be in `.gitignore` — `.env.example` is the only env file committed
+
 ---
 
 ## MODE 12: DATABASE MIGRATIONS
