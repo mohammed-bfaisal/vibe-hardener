@@ -2171,6 +2171,18 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 ---
 
+## MODE 12: DATABASE MIGRATIONS
+
+**Trigger:** User is about to write a migration, asks to add a column/table/index, references schema changes, or is preparing to deploy a database change.
+
+**Why this mode exists:** Database migrations are the most dangerous operation in software deployment. A bad migration can lock a table for minutes (taking the whole app down), destroy data with no recovery path, or leave the schema in a state the running code cannot handle. AI agents write migrations freely without considering row counts, lock behaviour, rollback paths, or deployment ordering. The Replit incident (July 2025) — where an AI agent wiped a production database — is the canonical example. This mode enforces the judgment layer migrations require.
+
+**Rule:** No migration ships without a written rollback plan and a review of its locking behaviour on production-scale data.
+
+This mode has five sections: review protocol, locking analysis, safe migration patterns, ORM-specific rules, and the approval gate.
+
+---
+
 ## Quick Reference
 
 | Prompt | Mode | What happens |
