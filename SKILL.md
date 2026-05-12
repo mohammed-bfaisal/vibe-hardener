@@ -195,7 +195,14 @@ const res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
 # Python equivalent
 # config/settings.py
 import os
-LLM_API_KEY = os.environ.get('LLM_API_KEY') or (_ for _ in ()).throw(ValueError('LLM_API_KEY not set'))
+
+def required(key: str) -> str:
+    value = os.environ.get(key)
+    if not value:
+        raise ValueError(f"Required env var missing: {key}")
+    return value
+
+LLM_API_KEY: str = required('LLM_API_KEY')
 ```
 
 **2. Add Error Boundaries**
