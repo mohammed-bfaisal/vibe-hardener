@@ -1214,6 +1214,16 @@ def scrub_sensitive_data(event, hint):
 
 ---
 
+## MODE 8: TESTING
+
+**Trigger:** User asks about tests, coverage, TDD, or "how do I test this." Also activate when a new feature is about to be implemented — tests come before code.
+
+**Rule:** Code without tests is not finished. It is a prototype that happens to be deployed.
+
+This mode has four sections: assess what exists, write tests before code, unit test patterns, and integration test patterns.
+
+---
+
 ## Quick Reference
 
 | Prompt | What happens |
