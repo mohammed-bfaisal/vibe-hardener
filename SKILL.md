@@ -1459,6 +1459,48 @@ A test suite can have 100% coverage and still be worthless. Apply this checklist
 
 This mode covers five areas: database indexing, caching, frontend bundle size, memory leaks, and missing pagination.
 
+### 9.1 Database Index Analysis
+
+Missing indexes are the single most common cause of production performance problems in vibe-coded apps. A query that runs in 2ms on a 100-row dev table runs in 4 seconds on a 500k-row production table.
+
+**Find unindexed queries — check every WHERE, JOIN ON, and ORDER BY clause:**
+
+```sql
+-- PostgreSQL: find sequential scans on large tables (run this on prod/staging)
+SELECT schemaname, tablename, seq_scan, seq_tup_read, idx_scan
+FROM pg_stat_user_tables
+WHERE seq_scan > 0
+ORDER BY seq_tup_read DESC
+LIMIT 20;
+
+-- PostgreSQL: unused indexes (wasting write performance)
+SELECT indexrelid::regclass AS index, relid::regclass AS table,
+       idx_scan, idx_tup_read, idx_tup_fetch
+FROM pg_stat_user_indexes
+WHERE idx_scan = 0
+ORDER BY pg_relation_size(indexrelid) DESC;
+```
+
+```bash
+# Find all WHERE clauses in query files — review each for missing index
+grep -rn "WHERE\|JOIN.*ON\|ORDER BY" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" --include="*.sql" \
+  | grep -v "\.test\.\|\.spec\."
+```
+
+**Index rules:**
+- Every foreign key column needs an index (unless the table is tiny)
+- Every column used in a WHERE clause on a frequently-queried table needs an index
+- Composite indexes: column order matters — most selective column first
+- Indexes slow down writes — only add them when you can measure the read benefit
+- After adding an index: run `EXPLAIN ANALYZE` before and after to verify it's used
+
+```sql
+-- Always verify with EXPLAIN ANALYZE before shipping
+EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
+-- Look for: "Index Scan" (good) vs "Seq Scan" (investigate)
+```
+
 ---
 
 ## Quick Reference
