@@ -937,6 +937,71 @@ DEBUG   Data useful for diagnosing a specific problem. Off in production.
 - Never log sensitive data (passwords, tokens, PII, card numbers) at any level
 - Production log level: INFO minimum. DEBUG only in dev or via feature flag
 
+### 7.2 Structured Log Format
+
+Every log entry must be machine-parseable JSON. `console.log('user created')` is useless in production — you cannot filter, aggregate, or alert on it.
+
+```typescript
+// ❌ WRONG — unstructured, unsearchable
+console.log('Payment failed for user ' + userId);
+console.error(error);
+
+// ✅ CORRECT — structured, searchable, alertable
+import { logger } from '../lib/logger';
+
+logger.error('Payment processing failed', {
+  userId,
+  orderId,
+  amount,
+  currency,
+  provider: 'stripe',
+  error: error instanceof Error ? error.message : String(error),
+  // never log: cardNumber, cvv, token, password
+});
+
+logger.info('Order placed', {
+  userId,
+  orderId,
+  itemCount: items.length,
+  totalCents,
+  durationMs: Date.now() - startTime,
+});
+```
+
+```python
+# ❌ WRONG
+print(f"Payment failed for user {user_id}: {error}")
+
+# ✅ CORRECT
+import logging
+import json
+
+logger = logging.getLogger(__name__)
+
+logger.error("Payment processing failed", extra={
+    "user_id": user_id,
+    "order_id": order_id,
+    "amount": amount,
+    "provider": "stripe",
+    "error": str(error),
+})
+
+logger.info("Order placed", extra={
+    "user_id": user_id,
+    "order_id": order_id,
+    "item_count": len(items),
+    "total_cents": total_cents,
+    "duration_ms": int((time.time() - start_time) * 1000),
+})
+```
+
+**Minimum fields every log entry must include:**
+- `timestamp` (ISO 8601, set by logger not by hand)
+- `level`
+- `message` (static string — not interpolated, so it's groupable)
+- `service` / `component` (where in the codebase)
+- Relevant IDs: `userId`, `requestId`, `orderId` — whatever makes this event findable
+
 ---
 
 ## Quick Reference
