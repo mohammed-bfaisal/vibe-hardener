@@ -64,6 +64,22 @@ grep -rn "^\s*[a-zA-Z]\+(" . --include="*.ts" --include="*.js" \
 # process.exit() in non-CLI code
 grep -rn "process\.exit(" src/ --include="*.ts" --include="*.js" 2>/dev/null || true
 
+# Observability gaps — console.log used instead of structured logger
+grep -rn "console\.\(log\|warn\|error\|info\)" src/ \
+  --include="*.ts" --include="*.js" --include="*.tsx" 2>/dev/null | grep -v "\.test\.\|\.spec\."
+
+# Missing health endpoint
+grep -rn "\/health\|healthCheck\|health_check" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
+# Missing correlation ID middleware
+grep -rn "correlationId\|correlation_id\|x-correlation-id\|x-request-id" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
+# Missing error tracker initialization
+grep -rn "Sentry\|sentry_sdk\|Bugsnag\|Rollbar\|@sentry" src/ \
+  --include="*.ts" --include="*.js" --include="*.py" 2>/dev/null | head -5
+
 # Synchronous file I/O in source (blocking in async context)
 grep -rn "readFileSync\|writeFileSync\|existsSync\|mkdirSync" src/ \
   --include="*.ts" --include="*.js" 2>/dev/null || true
