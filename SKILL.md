@@ -752,6 +752,16 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ No removal of existing required env vars without documentation update
 ```
 
+**Dependencies**
+```
+□ No new packages added without justification (could a native API do this?)
+□ Any new package: license checked — no GPL/AGPL in commercial projects
+□ Any new package: `npm audit` / `pip-audit` shows no new critical/high CVEs
+□ Lockfile committed and up to date (package-lock.json / poetry.lock / etc.)
+□ New packages in correct section: runtime deps in dependencies, build/test tools in devDependencies
+□ No floating versions (*  or latest) for production dependencies
+```
+
 **Git**
 ```
 □ Commit messages follow Conventional Commits (feat:, fix:, refactor:, docs:, chore:)
