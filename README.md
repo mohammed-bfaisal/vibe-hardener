@@ -99,19 +99,19 @@ curl -o AGENTS.md \
 ### In Claude Code
 
 ```
-/vibe-hardener audit
+use vibe-hardener to audit
 → Scans your codebase, reports every vibe-code signature with file:line and severity
 
-/vibe-hardener refactor src/api/users.ts
+use vibe-hardener to refactor src/api/users.ts
 → Refactors to production standard with plan shown before execution
 
-/vibe-hardener security-review
+use vibe-hardener to security-review
 → Full OWASP Top 10 scan + dependency audit guidance
 
-/vibe-hardener spec "add rate limiting to the auth endpoint"
+use vibe-hardener to spec "add rate limiting to the auth endpoint"
 → Generates a proper spec before a single line of code is written
 
-/vibe-hardener review
+use vibe-hardener to review
 → Pre-PR checklist — catch everything before you push
 ```
 
