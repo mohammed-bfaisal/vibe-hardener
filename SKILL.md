@@ -2369,6 +2369,65 @@ CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "
 - Non-root user always — root in a container means root if the container escapes
 - Always include a `HEALTHCHECK` — without it, orchestrators cannot tell if your app started correctly
 
+### 13.2 Container Security and .dockerignore
+
+AI agents frequently copy the entire project directory into the image (`COPY . .`) without a `.dockerignore`. This ships `.env` files, git history, test fixtures, and local secrets into the production image.
+
+**Required `.dockerignore`:**
+
+```
+# .dockerignore — must be present in every project with a Dockerfile
+.env
+.env.*
+!.env.example
+.git/
+.github/
+node_modules/
+*.log
+coverage/
+dist/
+.next/
+tests/
+__tests__/
+*.test.ts
+*.spec.ts
+*.test.js
+*.spec.js
+__pycache__/
+.pytest_cache/
+*.pyc
+.venv/
+venv/
+docs/
+*.md
+!README.md
+Dockerfile*
+docker-compose*
+```
+
+**Container security checklist:**
+
+```
+□ .dockerignore present and excludes .env, .git, test files, and local secrets
+□ No secrets passed via ENV or ARG in Dockerfile — use runtime env injection
+  (docker run -e / Kubernetes secrets / ECS task definition secrets)
+□ No --privileged flag in docker-compose.yml
+□ Base image scanned for CVEs: docker scout cve <image> / trivy image <image>
+□ No sensitive data in image layers (docker history --no-trunc <image> to verify)
+□ HEALTHCHECK defined so orchestrators know when the app is ready
+□ Ports exposed with EXPOSE match what the app actually listens on
+```
+
+```bash
+# Scan built image for vulnerabilities (requires docker scout or trivy)
+docker scout cve myapp:latest 2>/dev/null || \
+  trivy image myapp:latest 2>/dev/null || \
+  echo "Install docker scout or trivy for CVE scanning"
+
+# Check for secrets baked into image layers
+docker history --no-trunc myapp:latest | grep -iE "secret|password|token|key" || true
+```
+
 ---
 
 ## MODE 12: DATABASE MIGRATIONS
