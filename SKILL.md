@@ -50,6 +50,21 @@ npm audit --audit-level=high 2>/dev/null || true
 
 # pip audit (Python projects)
 pip-audit 2>/dev/null || safety check 2>/dev/null || true
+
+# Unhandled promise rejections (.then() without .catch())
+grep -rn "\.then(" . --include="*.ts" --include="*.js" --include="*.tsx" \
+  | grep -v "\.catch\|await\|// "
+
+# Missing await on async calls (async function called without await)
+grep -rn "^\s*[a-zA-Z]\+(" . --include="*.ts" --include="*.js" \
+  | grep -v "await\|return\|const\|let\|var\|=\|if\|while\|\/\/"
+
+# process.exit() in non-CLI code
+grep -rn "process\.exit(" src/ --include="*.ts" --include="*.js" 2>/dev/null || true
+
+# Synchronous file I/O in source (blocking in async context)
+grep -rn "readFileSync\|writeFileSync\|existsSync\|mkdirSync" src/ \
+  --include="*.ts" --include="*.js" 2>/dev/null || true
 ```
 
 ### Step 2 — Manual Pattern Scan
@@ -64,6 +79,8 @@ Check every file in scope for:
 - SQL/NoSQL queries using string concatenation with user input
 - Packages that may not exist (AI hallucinated dependencies)
 - `eval()` or `exec()` on user-supplied input
+- Floating promises: `.then()` chain with no `.catch()` and no `await`
+- `process.exit()` called outside of a CLI entry point
 
 **🟡 MEDIUM — Fix this sprint**
 - `any` / untyped in TypeScript without justification comment
@@ -75,6 +92,8 @@ Check every file in scope for:
 - User endpoint with no input validation
 - Broad exception catch: `except Exception:` / `catch (e: any)` with no specificity
 - Missing error handling on async operations
+- `readFileSync` / `writeFileSync` used in request handlers (blocks the event loop)
+- External HTTP calls with no timeout configured (hangs forever on unresponsive upstream)
 
 **🟢 LOW — Tech debt queue**
 - Single-letter variable names outside loop counters
