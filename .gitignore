@@ -12,7 +12,7 @@ Thumbs.db
 .idea/
 *.swp
 .claude/settings.local.json
-./CLAUDE.md
+CLAUDE.md
 .claude/settings.json
 
 # graphify generated output
