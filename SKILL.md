@@ -1877,6 +1877,35 @@ app.post('/orders', async (req, res) => {
 - Store the full response — return exactly the same response on replay, including status code
 - TTL on idempotency keys: 24 hours is standard (matches typical retry windows)
 - For PUT/PATCH: these should be naturally idempotent — sending the same data twice must produce the same state
+
+### 10.4 API Versioning
+
+Version before you need to. Changing an unversioned API forces all callers to update at the same time.
+
+```typescript
+// ✅ URL path versioning — explicit, cacheable, easy to route
+app.use('/api/v1', v1Router);
+app.use('/api/v2', v2Router);
+
+// ❌ Header versioning — less visible, harder to test in browser
+// Accept: application/vnd.myapi.v2+json
+
+// Versioning rules:
+// - Increment version on any breaking change: removed fields, changed types, renamed fields
+// - Additive changes (new optional fields, new endpoints) do not need a new version
+// - Keep v(n-1) running for at least 3 months after v(n) ships — give callers time to migrate
+// - Announce deprecation in the response header: Deprecation: true, Sunset: <date>
+```
+
+```typescript
+// Deprecation warning in response headers
+app.use('/api/v1', (req, res, next) => {
+  res.setHeader('Deprecation', 'true');
+  res.setHeader('Sunset', 'Sat, 01 Jan 2027 00:00:00 GMT');
+  res.setHeader('Link', '</api/v2>; rel="successor-version"');
+  next();
+}, v1Router);
+```
 ```
 ```
 
