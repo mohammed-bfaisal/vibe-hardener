@@ -2305,6 +2305,70 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 This mode has four sections: Dockerfile best practices, container security, .env.example standard, and GitHub Actions CI skeleton.
 
+### 13.1 Dockerfile Best Practices
+
+A Dockerfile is not just instructions for building an image — it determines the attack surface, image size, and startup time of your production service. AI agents generate single-stage Dockerfiles running as root with full dev dependencies in the production image.
+
+```dockerfile
+# ❌ WRONG — single stage, runs as root, ships dev dependencies, uses mutable tag
+FROM node:20
+WORKDIR /app
+COPY . .
+RUN npm install
+CMD ["node", "src/index.js"]
+# Result: ~1.1GB image, root access, npm install picks up devDependencies
+
+# ✅ CORRECT — multi-stage, minimal runtime image, non-root user, pinned tag
+# Stage 1: install production dependencies only
+FROM node:20-alpine AS deps
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --only=production
+
+# Stage 2: runtime — no build tools, no dev deps, no source map files
+FROM node:20-alpine AS runtime
+WORKDIR /app
+
+# Non-root user — if the container is compromised, attacker has no root
+RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+COPY --from=deps /app/node_modules ./node_modules
+COPY --chown=appuser:appgroup src/ ./src/
+
+USER appuser
+EXPOSE 3000
+
+# Health check — container orchestrators need this to route traffic correctly
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -qO- http://localhost:3000/health || exit 1
+
+CMD ["node", "src/index.js"]
+```
+
+```dockerfile
+# Python equivalent
+FROM python:3.13-slim AS runtime
+WORKDIR /app
+
+RUN adduser --disabled-password --gecos "" appuser
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt && rm requirements.txt
+
+COPY --chown=appuser:appuser src/ ./src/
+USER appuser
+
+HEALTHCHECK --interval=30s --timeout=5s --retries=3 \
+  CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')" || exit 1
+
+CMD ["python", "-m", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
+```
+
+**Rules:**
+- Always pin to a specific tag (`node:20-alpine`, not `node:latest`) — `latest` changes silently and breaks reproducible builds
+- Alpine or slim base images only — `node:20` is 1.1GB, `node:20-alpine` is 70MB
+- Multi-stage builds always — dev tools and test dependencies never ship to production
+- Non-root user always — root in a container means root if the container escapes
+- Always include a `HEALTHCHECK` — without it, orchestrators cannot tell if your app started correctly
+
 ---
 
 ## MODE 12: DATABASE MIGRATIONS
