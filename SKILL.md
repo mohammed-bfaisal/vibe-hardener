@@ -127,6 +127,8 @@ Check every file in scope for:
 - Missing error handling on async operations
 - `readFileSync` / `writeFileSync` used in request handlers (blocks the event loop)
 - External HTTP calls with no timeout configured (hangs forever on unresponsive upstream)
+- List endpoints returning unbounded results with no `LIMIT` / `limit` parameter (pagination missing)
+- Event listeners added without corresponding cleanup / removal (memory leak)
 
 **🟡 MEDIUM — React-specific (skip if project has no React)**
 - `key={index}` on list items — defeats reconciliation, causes subtle UI bugs
