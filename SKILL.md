@@ -1046,6 +1046,78 @@ class CorrelationIdMiddleware(BaseHTTPMiddleware):
 
 **Rule:** Every log emitted during a request must carry `correlationId`. If it doesn't, you cannot reconstruct what happened for a specific user complaint.
 
+### 7.4 Health Check Endpoint
+
+Every service must expose a `/health` endpoint. Load balancers, container orchestrators, and uptime monitors all need it. Without it, a broken service continues receiving traffic.
+
+```typescript
+// routes/health.ts
+import { Router } from 'express';
+import { db } from '../db';
+
+const router = Router();
+
+router.get('/health', async (req, res) => {
+  const checks: Record<string, 'ok' | 'error'> = {};
+
+  // Check every critical dependency
+  try {
+    await db.query('SELECT 1');
+    checks.database = 'ok';
+  } catch {
+    checks.database = 'error';
+  }
+
+  // Add checks for Redis, external APIs, message queues etc.
+
+  const allOk = Object.values(checks).every(v => v === 'ok');
+  res.status(allOk ? 200 : 503).json({
+    status: allOk ? 'ok' : 'degraded',
+    checks,
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+export default router;
+```
+
+```python
+# routes/health.py — FastAPI example
+from fastapi import APIRouter
+from datetime import datetime, timezone
+import time
+
+router = APIRouter()
+START_TIME = time.time()
+
+@router.get("/health")
+async def health_check(db=Depends(get_db)):
+    checks = {}
+    try:
+        await db.execute("SELECT 1")
+        checks["database"] = "ok"
+    except Exception:
+        checks["database"] = "error"
+
+    all_ok = all(v == "ok" for v in checks.values())
+    return JSONResponse(
+        status_code=200 if all_ok else 503,
+        content={
+            "status": "ok" if all_ok else "degraded",
+            "checks": checks,
+            "uptime_seconds": round(time.time() - START_TIME),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        }
+    )
+```
+
+**Rules:**
+- `/health` must return 200 only when all critical dependencies are reachable
+- Return 503 (not 500) when degraded — 503 signals "temporarily unavailable" to load balancers
+- Never put business logic behind `/health` — it must respond in under 500ms
+- Never expose internal IP addresses, stack traces, or secrets in the health response
+
 ---
 
 ## Quick Reference
