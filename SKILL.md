@@ -2003,6 +2003,33 @@ cat package.json | python -c "import sys,json; d=json.load(sys.stdin); print(len
 - Superseded by a native API (`request` → `fetch`, `moment` → `Temporal`/`date-fns`)
 - Only used in one place and the implementation is trivial to inline
 
+### 11.2 License Compatibility
+
+Using a GPL-licensed package in a commercial closed-source product can legally require you to open-source your entire product.
+
+```bash
+# Scan all dependency licenses (Node)
+npx license-checker --summary 2>/dev/null | head -30
+
+# Flag any GPL or AGPL licenses
+npx license-checker --failOn "GPL;AGPL;LGPL" 2>/dev/null
+
+# Python equivalent
+pip install pip-licenses 2>/dev/null; pip-licenses --summary 2>/dev/null
+```
+
+**License quick reference:**
+```
+MIT, ISC, BSD-2, BSD-3, Apache-2.0   ✅ Safe for commercial use
+LGPL                                  ⚠️  OK if used as a library (not modified)
+GPL-2.0, GPL-3.0                      ❌ Copyleft — forces your code open-source
+AGPL-3.0                              ❌ Copyleft — even SaaS delivery triggers it
+SSPL                                  ❌ MongoDB's license — similar to AGPL
+Unlicense, CC0                        ✅ Public domain
+```
+
+**Rule:** Before adding any dependency to a commercial project, check its license. One `npm install` away from a legal problem.
+
 ---
 
 ## Quick Reference
