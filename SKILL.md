@@ -2481,6 +2481,109 @@ NODE_ENV=development
 - Optional vars must have a comment explaining what disabling them does (empty = feature disabled, etc.)
 - `.env` must be in `.gitignore` — `.env.example` is the only env file committed
 
+### 13.4 GitHub Actions CI Pipeline
+
+A CI pipeline that runs only on push to `main` is too late — by then the code is already in the shared branch. CI must run on every pull request so broken code is caught before merge.
+
+**Node.js / TypeScript:**
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Type-check, lint, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci  # ci respects lockfile — never npm install in CI
+
+      - name: Type check
+        run: npx tsc --noEmit
+
+      - name: Lint
+        run: npm run lint  # must exit non-zero on warnings: --max-warnings 0
+
+      - name: Test with coverage
+        run: npm test -- --coverage --coverageThreshold='{"global":{"lines":70}}'
+
+      - name: Build
+        run: npm run build
+```
+
+**Python:**
+
+```yaml
+# .github/workflows/ci.yml
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    name: Lint, type-check, test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Lint and format check
+        run: |
+          ruff check .
+          ruff format --check .
+
+      - name: Type check
+        run: mypy src/
+
+      - name: Check for missing migrations
+        run: python manage.py migrate --check 2>/dev/null || true
+        # Remove the || true once you have Django configured
+
+      - name: Test with coverage
+        run: pytest --cov=src --cov-fail-under=70 --cov-report=term-missing
+```
+
+**Rules:**
+- Always use `npm ci` (not `npm install`) in CI — `ci` respects the lockfile exactly; `install` may update it
+- Lint must fail the build on warnings: `--max-warnings 0` — a lint step that never fails is decorative
+- Coverage threshold enforced in CI (not just reported) — failing to drop below threshold means coverage cannot silently erode
+- Build step must succeed — a TypeScript project that type-checks but won't compile ships nothing useful
+- Secrets come from `${{ secrets.X }}` — never hardcode tokens or API keys in workflow files
+- Add `concurrency` to cancel in-flight runs when a new commit is pushed to the same PR:
+
+```yaml
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+```
+
 ---
 
 ## MODE 12: DATABASE MIGRATIONS
