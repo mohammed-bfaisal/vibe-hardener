@@ -56,3 +56,11 @@ Never: process.env.X scattered throughout codebase
 ## Specs
 
 Features need `specs/YYYY-MM-DD-name.md` before implementation.
+Invoke: `"use vibe-hardener to spec [description]"` to generate.
+
+## Session Management
+
+- Reset context at ~50k tokens
+- Start each session: "Read AGENTS.md and relevant specs/ before we begin"
+- One feature per session where possible
+- When in doubt: stop, generate a spec, break into smaller pieces, new session
