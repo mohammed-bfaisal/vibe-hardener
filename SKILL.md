@@ -23,7 +23,9 @@ This skill has six modes. Read the user's intent and activate the correct one. Y
 
 ### Step 1 — Run These Scans First
 
-Suggest or run the following commands and use results to ground your report:
+**If you have shell access**, run the commands below and use results to ground your report.
+
+**If you do not have shell access** (e.g. Copilot inline, Cursor chat-only), perform Step 2 manually by reading each file in scope. State explicitly which scans you could not run and why, so the developer can run them manually.
 
 ```bash
 # Hardcoded secrets
