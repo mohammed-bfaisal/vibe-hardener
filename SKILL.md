@@ -668,6 +668,15 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ npm audit: no new critical/high vulnerabilities
 ```
 
+**Breaking Changes**
+```
+□ No exported function/type signatures changed in a backwards-incompatible way
+  (check with: git diff main...HEAD -- "*.ts" | grep "^-export")
+□ If a public API changed: callers identified and updated, or versioned endpoint added
+□ Database migration file present if schema changed
+□ No removal of existing required env vars without documentation update
+```
+
 **Git**
 ```
 □ Commit messages follow Conventional Commits (feat:, fix:, refactor:, docs:, chore:)
