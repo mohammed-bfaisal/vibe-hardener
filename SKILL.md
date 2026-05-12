@@ -567,6 +567,74 @@ return permissions;
 - Every external call must have a timeout — the default for most HTTP clients is no timeout
 - Non-critical dependencies (cache, feature flags, analytics) must degrade gracefully — their failure must not crash the app
 
+---
+
+**Transformation 9 — Black-Box Interface Design (Replaceability Principle)**
+
+Every module should be replaceable without touching its callers. If swapping an implementation (e.g., PostgreSQL → DynamoDB, Redis → in-memory store, Stripe → Paddle) requires changes in multiple call sites, the abstraction is leaking. Identified by Eskil Steenberg's principle: design for replaceability, not for reuse.
+
+**Signs of leaky abstraction:**
+- Service function accepts a `db: PrismaClient` argument (caller is aware of the ORM)
+- Route handler imports `stripe` directly and calls `stripe.charges.create()` (no payment service layer)
+- Multiple files import the same third-party SDK directly (tight coupling, hard to swap or mock)
+
+**Transformation pattern:**
+
+```typescript
+// ❌ WRONG — callers are coupled to the Stripe SDK shape
+import Stripe from 'stripe';
+async function createCharge(stripe: Stripe, amount: number, token: string) {
+  return stripe.charges.create({ amount, currency: 'usd', source: token });
+}
+
+// ✅ CORRECT — callers depend on a stable interface, not a vendor SDK
+interface PaymentProvider {
+  charge(amount: number, token: string): Promise<{ id: string; status: string }>;
+}
+
+class StripePaymentProvider implements PaymentProvider {
+  constructor(private readonly client: Stripe) {}
+  async charge(amount: number, token: string) {
+    const result = await this.client.charges.create({ amount, currency: 'usd', source: token });
+    return { id: result.id, status: result.status };
+  }
+}
+
+// Callers only know about PaymentProvider — swap Stripe for Paddle without touching them
+```
+
+```python
+# ❌ WRONG — business logic is coupled to boto3's S3 interface
+import boto3
+
+async def save_document(bucket: str, key: str, content: bytes) -> None:
+    s3 = boto3.client("s3")
+    s3.put_object(Bucket=bucket, Key=key, Body=content)
+
+# ✅ CORRECT — stable interface, storage backend is swappable
+from abc import ABC, abstractmethod
+
+class DocumentStore(ABC):
+    @abstractmethod
+    async def save(self, key: str, content: bytes) -> None: ...
+
+class S3DocumentStore(DocumentStore):
+    def __init__(self, bucket: str) -> None:
+        self._bucket = bucket
+        self._client = boto3.client("s3")
+
+    async def save(self, key: str, content: bytes) -> None:
+        self._client.put_object(Bucket=self._bucket, Key=key, Body=content)
+```
+
+**Rules:**
+- Each external vendor (database, cache, payment, storage, email) gets one wrapper class that translates the vendor's API to your domain's interface
+- No route handler or service function should import a vendor SDK directly
+- The interface should be defined in terms of your domain, not the vendor's (return `{ id, status }`, not `Stripe.Charge`)
+- If a module cannot be unit-tested with a fake/stub without starting the real service, the interface is leaking
+
+---
+
 ### What NOT to Refactor
 
 Do not:
