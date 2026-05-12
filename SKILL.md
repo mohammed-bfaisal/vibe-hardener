@@ -1501,6 +1501,67 @@ EXPLAIN ANALYZE SELECT * FROM orders WHERE user_id = 123 AND status = 'pending';
 -- Look for: "Index Scan" (good) vs "Seq Scan" (investigate)
 ```
 
+### 9.2 Caching Opportunity Detection
+
+Cache data that is: read far more than it is written, expensive to compute, and acceptable to be slightly stale.
+
+**Identify candidates:**
+```bash
+# Find repeated DB queries in the same request scope
+grep -rn "await.*Repository\|await.*\.find\|await.*\.query" src/ \
+  --include="*.ts" --include="*.js" | grep -v "\.test\."
+
+# Find expensive operations called on every request
+grep -rn "await.*fetch\|await.*axios\|await.*http" src/ \
+  --include="*.ts" --include="*.js" | grep -v "\.test\."
+```
+
+**Cache-aside pattern (Redis):**
+```typescript
+// lib/cache.ts
+import { redis } from './redis';
+
+export async function withCache<T>(
+  key: string,
+  ttlSeconds: number,
+  fetcher: () => Promise<T>
+): Promise<T> {
+  const cached = await redis.get(key);
+  if (cached) return JSON.parse(cached) as T;
+
+  const fresh = await fetcher();
+  await redis.setex(key, ttlSeconds, JSON.stringify(fresh));
+  return fresh;
+}
+
+// Usage — cache user permissions for 60 seconds
+const permissions = await withCache(
+  `permissions:${userId}`,
+  60,
+  () => permissionRepository.findByUserId(userId)
+);
+```
+
+```python
+# Python equivalent
+import json
+from functools import wraps
+
+async def with_cache(redis_client, key: str, ttl: int, fetcher):
+    cached = await redis_client.get(key)
+    if cached:
+        return json.loads(cached)
+    fresh = await fetcher()
+    await redis_client.setex(key, ttl, json.dumps(fresh))
+    return fresh
+```
+
+**Caching rules:**
+- Set explicit TTLs — never cache without expiry
+- Cache at the right layer: HTTP (CDN/reverse proxy) > application > database
+- Always have a cache invalidation strategy before you add a cache
+- Never cache: user-specific auth tokens, mutable state that must be instantly consistent, or data that is unique per request
+
 ---
 
 ## Quick Reference
