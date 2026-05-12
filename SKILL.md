@@ -2238,6 +2238,95 @@ FROM pg_stat_user_tables
 WHERE relname = 'your_table_name';
 ```
 
+### 12.3 Safe Migration Patterns
+
+**The Expand / Migrate / Contract pattern — use for every breaking schema change**
+
+Never make a breaking schema change in a single step while the application is live. Use three steps instead:
+
+```
+Step 1 — EXPAND:   Add the new thing without removing the old thing.
+                   Both old and new schema work simultaneously.
+                   Deploy runs with both supported.
+
+Step 2 — MIGRATE:  Move data from old shape to new shape.
+                   Application writes to both during transition.
+
+Step 3 — CONTRACT: Remove the old thing once no code references it.
+                   Deploy code that only uses the new shape, then drop the old.
+```
+
+**Pattern: Add a NOT NULL column to an existing table**
+
+```sql
+-- ❌ WRONG — one shot, locks table, fails if rows exist without a value
+ALTER TABLE orders ADD COLUMN shipped_at TIMESTAMP NOT NULL;
+
+-- ✅ CORRECT — three-step expand/migrate/contract
+
+-- Step 1: Add nullable (instant, no lock)
+ALTER TABLE orders ADD COLUMN shipped_at TIMESTAMP;
+
+-- Step 2: Backfill existing rows in batches (never UPDATE without LIMIT on large tables)
+UPDATE orders SET shipped_at = created_at
+WHERE shipped_at IS NULL AND id IN (
+  SELECT id FROM orders WHERE shipped_at IS NULL LIMIT 10000
+);
+-- Run this in a loop until 0 rows updated
+
+-- Step 3: Add NOT NULL constraint after backfill is complete
+ALTER TABLE orders ALTER COLUMN shipped_at SET NOT NULL;
+```
+
+**Pattern: Rename a column**
+
+```sql
+-- ❌ WRONG — renames live column, all running queries using old name break instantly
+ALTER TABLE users RENAME COLUMN full_name TO display_name;
+
+-- ✅ CORRECT — expand/migrate/contract
+-- Step 1: Add new column
+ALTER TABLE users ADD COLUMN display_name TEXT;
+
+-- Step 2: Backfill + update app to write to both columns
+UPDATE users SET display_name = full_name WHERE display_name IS NULL;
+
+-- Step 3: After code is deployed that only uses display_name, drop old column
+-- (Separate PR, separate deploy, separate migration)
+ALTER TABLE users DROP COLUMN full_name;
+```
+
+**Pattern: Add an index**
+
+```sql
+-- ❌ WRONG — holds ShareLock, blocks all writes for duration of index build
+CREATE INDEX idx_orders_user_id ON orders(user_id);
+
+-- ✅ CORRECT — CONCURRENTLY builds without blocking writes
+CREATE INDEX CONCURRENTLY idx_orders_user_id ON orders(user_id);
+-- Note: CONCURRENTLY cannot run inside a transaction block
+```
+
+**Pattern: Backfill large tables**
+
+```sql
+-- ❌ WRONG — single UPDATE on entire table, holds lock, kills DB under load
+UPDATE events SET processed = TRUE WHERE processed IS NULL;
+
+-- ✅ CORRECT — batch with a loop, stay within transaction size limits
+DO $$
+DECLARE updated INT;
+BEGIN
+  LOOP
+    UPDATE events SET processed = TRUE
+    WHERE id IN (SELECT id FROM events WHERE processed IS NULL LIMIT 5000);
+    GET DIAGNOSTICS updated = ROW_COUNT;
+    EXIT WHEN updated = 0;
+    PERFORM pg_sleep(0.05); -- brief pause between batches
+  END LOOP;
+END $$;
+```
+
 ---
 
 ## Quick Reference
