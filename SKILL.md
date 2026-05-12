@@ -686,6 +686,16 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ npm audit: no new critical/high vulnerabilities
 ```
 
+**Testing**
+```
+□ New business logic has unit tests covering happy path and error paths
+□ New API endpoints have integration tests covering: 200/201, 400, 401/403, 404
+□ Tests pass locally: npm test / pytest
+□ No tests skipped or marked .only / .skip without explanation
+□ Coverage did not decrease (run: npx jest --coverage or pytest --cov)
+□ Test names are descriptive — a failing test name explains what broke
+```
+
 **Observability**
 ```
 □ No raw console.log / print() added — structured logger used throughout
