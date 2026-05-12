@@ -686,6 +686,16 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ npm audit: no new critical/high vulnerabilities
 ```
 
+**Observability**
+```
+□ No raw console.log / print() added — structured logger used throughout
+□ New code paths log meaningful INFO events (not just errors)
+□ Every new error path logs with enough context to debug without reproducing
+□ No PII logged (passwords, tokens, card numbers, SSNs, emails unless explicitly required)
+□ New service or significant feature: /health endpoint checks any new dependency added
+□ New service: error tracker initialized and SENTRY_DSN (or equivalent) in .env.example
+```
+
 **Breaking Changes**
 ```
 □ No exported function/type signatures changed in a backwards-incompatible way
