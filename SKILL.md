@@ -867,6 +867,15 @@ Report PASS / FAIL on each item. Fail = block until fixed.
 □ No removal of existing required env vars without documentation update
 ```
 
+**Resilience**
+```
+□ All new external HTTP calls have a timeout (AbortController / httpx timeout)
+□ External calls on critical user paths have retry with exponential backoff and jitter
+□ Non-critical dependencies (cache, feature flags, analytics) have a fallback — their
+  failure must not crash the app or fail the request
+□ No new synchronous blocking call on the request path without a timeout
+```
+
 **Dependencies**
 ```
 □ No new packages added without justification (could a native API do this?)
