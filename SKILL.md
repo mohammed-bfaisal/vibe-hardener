@@ -1562,6 +1562,53 @@ async def with_cache(redis_client, key: str, ttl: int, fetcher):
 - Always have a cache invalidation strategy before you add a cache
 - Never cache: user-specific auth tokens, mutable state that must be instantly consistent, or data that is unique per request
 
+### 9.3 Bundle Size and Import Patterns (Frontend)
+
+Importing an entire library for one function is a common frontend performance killer.
+
+```bash
+# Analyse bundle composition (webpack / vite projects)
+npx vite-bundle-visualizer 2>/dev/null || npx webpack-bundle-analyzer 2>/dev/null || true
+
+# Find barrel imports that pull in entire libraries
+grep -rn "^import.*from 'lodash'" src/ --include="*.ts" --include="*.tsx"
+grep -rn "^import.*from 'date-fns'" src/ --include="*.ts" --include="*.tsx"
+grep -rn "^import \* as\|^import {.*} from 'moment'" src/ --include="*.ts" --include="*.tsx"
+```
+
+**Common patterns to fix:**
+
+```typescript
+// ❌ WRONG — imports entire lodash (~70KB gzipped)
+import _ from 'lodash';
+const sorted = _.sortBy(users, 'name');
+
+// ✅ CORRECT — named import, tree-shakeable
+import { sortBy } from 'lodash-es';
+const sorted = sortBy(users, 'name');
+
+// ✅ BETTER — use native platform API (zero bundle cost)
+const sorted = [...users].sort((a, b) => a.name.localeCompare(b.name));
+
+// ❌ WRONG — imports entire date-fns
+import * as dateFns from 'date-fns';
+
+// ✅ CORRECT — import only what you use
+import { format, differenceInDays } from 'date-fns';
+
+// ❌ WRONG — large component imported eagerly on initial load
+import { HeavyDashboard } from './HeavyDashboard';
+
+// ✅ CORRECT — lazy load routes and heavy components
+const HeavyDashboard = lazy(() => import('./HeavyDashboard'));
+```
+
+**Bundle rules:**
+- Every new dependency added to a frontend project: check its size on bundlephobia.com
+- Prefer native browser APIs over utility libraries for simple operations
+- Lazy-load any route or component that is not on the critical first-render path
+- Images: use WebP, set explicit width/height to prevent layout shift, lazy-load below the fold
+
 ---
 
 ## Quick Reference
