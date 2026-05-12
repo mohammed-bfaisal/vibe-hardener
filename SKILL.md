@@ -1974,6 +1974,35 @@ paths:
 
 This mode covers: unnecessary dependencies, license compatibility, lockfile discipline, and native platform replacements.
 
+### 11.1 Unnecessary Dependency Detection
+
+```bash
+# Find declared packages not imported anywhere (Node)
+npx depcheck 2>/dev/null | head -30
+
+# Find packages imported but not in package.json (phantom deps)
+npx knip 2>/dev/null | head -30
+
+# Python: find unused imports
+pip install pylint 2>/dev/null; pylint --disable=all --enable=W0611 src/ 2>/dev/null | grep "unused-import"
+
+# Count total production dependencies
+cat package.json | python -c "import sys,json; d=json.load(sys.stdin); print(len(d.get('dependencies',{})), 'prod deps,', len(d.get('devDependencies',{})), 'dev deps')"
+```
+
+**For each dependency, ask:**
+1. Is it still imported anywhere in the codebase?
+2. Is it doing something the language/platform now does natively?
+3. Is it duplicating another dependency (two date libraries, two HTTP clients)?
+4. Is it in `dependencies` but only used in tests/build? → move to `devDependencies`
+5. Is it a one-function package (`is-odd`, `left-pad`)? → inline it
+
+**Flag for removal:**
+- Zero imports in src/ (depcheck catches this)
+- Last published more than 3 years ago with open CVEs
+- Superseded by a native API (`request` → `fetch`, `moment` → `Temporal`/`date-fns`)
+- Only used in one place and the implementation is trivial to inline
+
 ---
 
 ## Quick Reference
