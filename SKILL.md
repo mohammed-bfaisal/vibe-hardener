@@ -1609,6 +1609,70 @@ const HeavyDashboard = lazy(() => import('./HeavyDashboard'));
 - Lazy-load any route or component that is not on the critical first-render path
 - Images: use WebP, set explicit width/height to prevent layout shift, lazy-load below the fold
 
+### 9.4 Memory Leak Detection
+
+Memory leaks in Node.js and React cause services to degrade slowly until they crash or need a restart.
+
+```bash
+# Find event listeners that may not be cleaned up
+grep -rn "addEventListener\|\.on(" src/ --include="*.ts" --include="*.js" \
+  | grep -v "removeEventListener\|\.off(\|\.once(" | grep -v "\.test\."
+
+# Find setInterval without clearInterval
+grep -rn "setInterval(" src/ --include="*.ts" --include="*.js" \
+  | grep -v "clearInterval\|\.test\."
+
+# Find React useEffect with subscriptions but no cleanup return
+grep -A 20 "useEffect(" src/ --include="*.tsx" --include="*.ts" -rn \
+  | grep -B 5 "subscribe\|addEventListener\|setInterval\|WebSocket" \
+  | grep -v "return () =>"
+```
+
+**Common memory leak patterns:**
+
+```typescript
+// ❌ WRONG — event listener never removed
+function MyComponent() {
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    // no cleanup
+  }, []);
+}
+
+// ✅ CORRECT — cleanup returned from useEffect
+function MyComponent() {
+  useEffect(() => {
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+}
+
+// ❌ WRONG — interval never cleared
+function startPolling() {
+  setInterval(fetchUpdates, 5000);
+}
+
+// ✅ CORRECT — interval stored and cleared on teardown
+function startPolling() {
+  const intervalId = setInterval(fetchUpdates, 5000);
+  return () => clearInterval(intervalId);
+}
+
+// ❌ WRONG — closure holds reference to large object forever
+function processData(largeDataset: LargeObject[]) {
+  const cache = new Map();
+  return function lookup(id: string) {
+    // largeDataset is captured in closure, never freed
+    return cache.get(id) ?? largeDataset.find(d => d.id === id);
+  };
+}
+```
+
+**Node.js specific:**
+- Database connection pools not released on error → always use `finally` to release connections
+- Unbounded caches (Maps/Sets that grow forever with no eviction)
+- Streams not closed on error — always attach `error` handlers and call `destroy()`
+
 ---
 
 ## Quick Reference
