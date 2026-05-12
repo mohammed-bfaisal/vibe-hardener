@@ -5,7 +5,6 @@ description: >
   Covers audit, refactor, security review, spec-driven development, and pre-PR review.
   Works with any stack, any language, any agent.
   Invoke with: "use vibe-hardener to [audit/refactor/security-review/spec/review]"
-  Or use slash commands: /vibe-hardener [mode]
 ---
 
 # vibe-hardener
