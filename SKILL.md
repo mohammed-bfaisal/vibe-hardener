@@ -1256,6 +1256,27 @@ python -m pytest --co -q 2>/dev/null | tail -5
 4. Error handling paths
 5. External API integrations
 
+### 8.2 TDD Gate — Test Before Implementation
+
+When a user asks you to implement a new function or feature, apply this protocol:
+
+1. **Write the test first.** Ask: "What should this function do?" Write one test that will pass when it's done correctly.
+2. **Run it and confirm it fails.** A test that passes before the implementation exists is not a real test.
+3. **Write the minimum implementation to make it pass.**
+4. **Refactor the implementation** without breaking the test.
+5. **Add edge case tests** — null inputs, empty collections, boundary values, error paths.
+6. **Repeat** for the next behaviour.
+
+Do not write more than one failing test at a time. Do not implement more than what the failing test requires.
+
+**When to say "tests first" is not practical:**
+- Exploratory spike code that will be thrown away
+- UI layout adjustments
+- Configuration changes
+- Very simple one-liner utilities with no branching
+
+**Everything else:** test first.
+
 ---
 
 ## Quick Reference
