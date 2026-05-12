@@ -445,6 +445,14 @@ npm audit --audit-level=high
 
 # Python: pip-audit or safety
 pip-audit
+
+# SSRF: user-controlled URLs passed to fetch/http/requests
+grep -rn "fetch(\|axios.get(\|requests.get(" . --include="*.ts" --include="*.js" --include="*.py" \
+  | grep -v "config\.\|env\.\|BASE_URL\|process.env" | head -20
+
+# Path traversal: user input used in file paths
+grep -rn "path.join\|__dirname\|readFile\|createReadStream" . \
+  --include="*.ts" --include="*.js" | grep "req\.\|param\|query\|body" | head -20
 ```
 
 ### The Checklist
@@ -460,6 +468,8 @@ pip-audit
 □ Auth enforced on server side — not just client side
 □ No SQL/NoSQL queries using string concatenation with user input
 □ No eval() or exec() on user input
+□ No user-controlled URLs passed directly to fetch/http/requests (SSRF)
+□ File path operations do not use unvalidated user input (path traversal)
 ```
 
 **🔴 HIGH — Fix before merge**
