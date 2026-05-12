@@ -2463,6 +2463,18 @@ days_in_month = calendar.monthrange(today.year, today.month)[1]
 
 ---
 
+## MODE 14: LLM APPLICATION ENGINEERING
+
+**Trigger:** The codebase contains calls to an LLM API (OpenAI, Anthropic, Gemini, etc.), uses agent frameworks (LangChain, LlamaIndex, Vercel AI SDK, CrewAI), or builds features where a language model generates content, takes actions, or routes decisions.
+
+**Why this mode exists:** LLM APIs are external services with failure modes that standard web engineering doesn't cover. Prompt injection can hijack model behaviour using user-supplied text. Unbounded token usage in loops causes runaway API costs — a real production incident vector. Model output is non-deterministic and must be validated before use, not trusted like a typed function return. These failure modes are invisible to standard audits, security reviews, and error handling patterns. vibe-hardener covers the other nine OWASP categories; this mode covers the tenth: the AI-specific surface. No other tool in the ecosystem covers this as an invocable workflow.
+
+**Rule:** User input is never trusted as part of the instruction set. Model output is never trusted as typed data. Every LLM call is bounded in cost. Every prompt is versioned.
+
+This mode has four sections: prompt injection defence, cost control, output validation, and prompt versioning.
+
+---
+
 ## MODE 13: CI/CD AND CONTAINER HYGIENE
 
 **Trigger:** User is preparing to deploy, asks about Docker, containerisation, CI pipelines, environment setup, GitHub Actions, or "how do I ship this reliably."
