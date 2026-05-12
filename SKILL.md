@@ -555,7 +555,8 @@ Ask these questions one at a time. Do not ask all at once. Adapt based on answer
 3. How do we know it's done? Give me 3-5 testable acceptance criteria.
 4. What must this explicitly NOT do? (Scope boundary)
 5. What existing code does this touch or depend on?
-6. Any performance, security, or integration constraints?
+6. Any performance targets? (latency, throughput, scale)
+7. Any security, compliance, or integration constraints?
 
 ### Step 2 — Generate the Spec
 
@@ -581,8 +582,12 @@ Output this file to `specs/YYYY-MM-DD-feature-name.md`:
 - [Explicitly excluded thing 1]
 - [Explicitly excluded thing 2]
 
+## Non-Functional Requirements
+- **Performance:** [p95 latency target, throughput, or "none specified"]
+- **Availability:** [uptime requirement or "none specified"]
+- **Scale:** [expected request volume / data size or "none specified"]
+
 ## Technical Constraints
-- [Performance requirement if any]
 - [Integration requirement if any]
 - [Security requirement if any]
 
