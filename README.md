@@ -33,60 +33,83 @@ This happens because AI agents optimize for *working code*, not *production code
 
 ---
 
-## What it is
+## How it works
 
-A single `SKILL.md` file — an agent skill — that gives any AI coding agent the context, rules, and workflows of a senior software engineer. Drop it into any project and your agent will:
+`SKILL.md` is a large instruction file — 3,000+ lines of engineering standards, checklists, patterns, and protocols. When you install it, your agent loads it into its context. When you invoke a mode, the agent follows that mode's protocol exactly as if a senior engineer had written it out as a task.
 
-- **Audit** — scan for vibe-code signatures with runnable grep commands and a severity-graded report
-- **Refactor** — transform to production standards: config extraction, error boundaries, SRP, typed inputs, Promise flattening, repository pattern
-- **Security review** — full OWASP Top 10 pass including SSRF, path traversal, timing attacks, CSRF, CSP, cookie flags
-- **Spec** — interview you, produce a complete spec (acceptance criteria, NFRs, API contract, rollback plan), then gate on approval before writing code
-- **Pre-PR review** — checklist covering code quality, architecture, security, testing, observability, dependencies, and git hygiene
-- **Observability** — structured logging with correct log levels, correlation ID middleware, health check endpoint, error tracking (Sentry/Bugsnag) with PII scrubbing
-- **Testing** — TDD gate before implementation, unit test patterns, integration tests with transaction rollback, test quality checklist
-- **Performance** — database index analysis with `EXPLAIN ANALYZE`, cache-aside pattern with Redis, frontend bundle optimization, memory leak detection, cursor-based pagination
-- **API design** — HTTP status code semantics, consistent error response shape with centralised handler, idempotency keys, versioning with Sunset headers, OpenAPI generation
-- **Dependency hygiene** — unused package detection, license compatibility scan (blocks GPL in commercial projects), lockfile discipline, native platform replacements for bloated packages
-- **Database migrations** — safe migration review protocol: lock analysis, expand/migrate/contract pattern, ORM-specific pitfalls (Prisma, Alembic, Django), approval gate before destructive changes
-- **CI/CD** — multi-stage Dockerfile with non-root user, container security hardening, `.env.example` discipline, GitHub Actions workflow with `npm ci`, coverage thresholds, and concurrency cancellation
-- **LLM application engineering** — prompt injection prevention, token budget + iteration cap enforcement, output validation with zod/pydantic before use, prompt versioning with versioned files
+There's no plugin, no extension, no API. It's instructions in natural language that any AI agent can follow. That's why it works everywhere.
 
-Works with TypeScript, JavaScript, Python, and Go. Degrades gracefully when the agent has no shell access.
+```
+You say:              "use vibe-hardener to audit"
+The agent reads:      MODE 1 in SKILL.md — runs scan commands, applies
+                      the manual pattern checklist, produces a graded report
+You get back:         A list of every issue with file:line, severity, and fix
+```
 
-It's not a linter. It's not a static analysis tool. It's the engineering judgment layer that AI agents are missing.
+Each mode is self-contained. The agent won't start executing until it has read the mode's protocol — so you always see the plan before anything changes.
+
+**The skill covers 14 areas:**
+
+| Mode | Invoke with | What it does |
+|------|-------------|--------------|
+| 1 | `audit` | Scan for vibe-code signatures — severity-graded report with file:line |
+| 2 | `refactor [path]` | Transform to production standards — plan shown before execution |
+| 3 | `security-review` | OWASP Top 10 scan — CRITICAL/HIGH/MEDIUM report |
+| 4 | `spec "description"` | Interview → spec file → approval gate → then code |
+| 5 | `review` | Pre-PR checklist: quality, arch, security, testing, deps, git |
+| 6 | `show standards` | Print always-on rules (TS, Python, Go, error patterns, DB) |
+| 7 | `observability` | Structured logging, correlation IDs, health check, error tracking |
+| 8 | `testing` | TDD gate, unit + integration test patterns, test quality checklist |
+| 9 | `performance` | DB indexes, caching, bundle size, memory leaks, pagination |
+| 10 | `api-design` | HTTP status codes, error shape, idempotency, versioning, OpenAPI |
+| 11 | `dependency-hygiene` | Unused deps, license scan, lockfile check, native replacements |
+| 12 | `db-migrations` | Lock analysis, expand/migrate/contract, ORM rules, approval gate |
+| 13 | `cicd` | Dockerfile, container security, .env.example, GitHub Actions |
+| 14 | `llm-engineering` | Prompt injection, cost control, output validation, prompt versioning |
 
 ---
 
-## Works with every major agent
+## Where to start
 
-| Agent | How it loads |
-|---|---|
-| **Claude Code** | `.claude/skills/vibe-hardener/SKILL.md` |
-| **Codex CLI** | `AGENTS.md` at project root |
-| **Cursor** | `.cursor/rules/vibe-hardener.mdc` |
-| **GitHub Copilot** | `.github/copilot-instructions.md` |
-| **Windsurf** | `.windsurfrules` |
-| **Gemini CLI** | `GEMINI.md` at project root |
-| **Any agent** | `SKILL.md` at project root — reference it manually |
+**You have existing code and want to know what's wrong:**
+```
+use vibe-hardener to audit
+```
+Runs grep scans + a manual pattern pass. Gives you a HIGH/MEDIUM/LOW report with exact file locations. Start here.
+
+**You're about to build a new feature:**
+```
+use vibe-hardener to spec "describe what you want to build"
+```
+Forces a spec before a single line of code. You'll answer 8 questions, get a written spec with acceptance criteria and rollback plan, approve it, then the agent implements it. Prevents the "I have 300 lines of code I don't fully understand" problem.
+
+**You're about to push a PR:**
+```
+use vibe-hardener to review
+```
+Runs the full pre-PR checklist: code quality, architecture, security, testing, observability, dependencies, and git hygiene. Catch everything before a human reviewer does.
+
+**You're about to deploy:**
+```
+use vibe-hardener to security-review
+```
+Dedicated OWASP Top 10 pass. More thorough than the audit on the security surface specifically.
+
+**You're about to run a database migration:**
+```
+use vibe-hardener to db-migrations
+```
+Reviews the migration for lock risk before it runs. A bad migration can lock a table for minutes in production.
 
 ---
 
 ## Install
 
-### Automated (recommended)
+### Claude Code
 
-```bash
-# Clone the repo
-git clone https://github.com/mohammed-bfaisal/vibe-hardener.git
+The skill is already pre-placed in this repo at `.claude/skills/vibe-hardener/SKILL.md`. If you cloned the repo, it's already there.
 
-# Run the installer in your project directory
-cd your-project
-bash /path/to/vibe-hardener/install.sh
-```
-
-The installer detects which agents you have configured and places the skill in every right location automatically.
-
-### Manual — Claude Code
+To install into your own project:
 
 ```bash
 mkdir -p .claude/skills/vibe-hardener
@@ -94,38 +117,86 @@ curl -o .claude/skills/vibe-hardener/SKILL.md \
   https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/SKILL.md
 ```
 
-### Manual — Any other agent
+Then invoke: `use vibe-hardener to [mode]`
+
+### Cursor
 
 ```bash
-# Download AGENTS.md as your project's universal agent config
-curl -o AGENTS.md \
-  https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/AGENTS.md
+mkdir -p .cursor/rules
+curl -o .cursor/rules/vibe-hardener.mdc \
+  https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/SKILL.md
 ```
+
+Then invoke: `use vibe-hardener to [mode]` in the Cursor chat.
+
+### Codex CLI / Gemini CLI / any agent that reads AGENTS.md
+
+```bash
+curl -o AGENTS.md \
+  https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/SKILL.md
+```
+
+The agent reads `AGENTS.md` automatically at session start.
+
+### Windsurf
+
+```bash
+curl -o .windsurfrules \
+  https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/SKILL.md
+```
+
+### GitHub Copilot
+
+```bash
+mkdir -p .github
+curl -o .github/copilot-instructions.md \
+  https://raw.githubusercontent.com/mohammed-bfaisal/vibe-hardener/main/templates/copilot-instructions.md
+```
+
+Note: Copilot reads this as passive guidance — it doesn't support invocable modes. The experience is weaker than Claude Code or Cursor.
+
+### Automated (all agents at once)
+
+```bash
+git clone https://github.com/mohammed-bfaisal/vibe-hardener.git
+cd your-project
+bash /path/to/vibe-hardener/install.sh
+```
+
+The installer detects which agents you have configured and places the skill in every right location.
+
+### Verify it worked
+
+In Claude Code or Cursor, type:
+```
+use vibe-hardener to show standards
+```
+If you get back a formatted list of engineering rules, the skill is loaded.
 
 ---
 
 ## Usage
 
-### In Claude Code
+All modes follow the same invocation pattern: `use vibe-hardener to [mode]`
 
 ```
 use vibe-hardener to audit
 → Scans your codebase, reports every vibe-code signature with file:line and severity
 
 use vibe-hardener to refactor src/api/users.ts
-→ Refactors to production standard with plan shown before execution
+→ States the plan, waits for your approval, then refactors one concern at a time
 
 use vibe-hardener to security-review
-→ Full OWASP Top 10 scan + dependency audit guidance
+→ Full OWASP Top 10 scan + dependency audit — CRITICAL/HIGH/MEDIUM report
 
 use vibe-hardener to spec "add rate limiting to the auth endpoint"
-→ Generates a proper spec before a single line of code is written
+→ Interviews you, generates specs/YYYY-MM-DD-feature.md, gates on approval before writing code
 
 use vibe-hardener to review
 → Pre-PR checklist — catch everything before you push
 
 use vibe-hardener to observability
-→ Adds structured logging, correlation IDs, /health endpoint, error tracking setup
+→ Structured logging, correlation IDs, /health endpoint, Sentry/Bugsnag setup
 
 use vibe-hardener to testing
 → TDD gate + unit/integration test patterns + test quality checklist
@@ -149,7 +220,7 @@ use vibe-hardener to llm-engineering
 → Prompt injection scan, cost control, output schema validation, prompt versioning setup
 ```
 
-### In any agent
+### In any agent (without skill support)
 
 Reference it directly in your prompt:
 
@@ -280,7 +351,7 @@ export const processService = {
 };
 ```
 
-Every refactor follows a fixed protocol: read first, state the plan, confirm before executing, one concern at a time. Transformations applied: config extraction, error boundaries, separation of concerns, magic value constants, input types, Promise chain flattening, and database repository isolation.
+Every refactor follows a fixed protocol: read first, state the plan, confirm before executing, one concern at a time. Transformations applied: config extraction, error boundaries, separation of concerns, magic value constants, input types, Promise chain flattening, repository isolation, resilience patterns (retry/timeout/fallback), black-box interface design, and linting config generation if missing.
 
 ---
 
@@ -301,7 +372,7 @@ Agent: Before implementing, let me ask:
   7. Any security or compliance constraints?
   8. If this ships and breaks something, how do we roll it back?
 
-[After you answer, it generates specs/2026-05-12-user-auth.md]
+[After you answer, it generates specs/2026-05-13-user-auth.md]
 [The spec includes: acceptance criteria, NFRs, API contract shape, edge cases, rollback plan]
 [Only after you approve the spec does it write a single line of code]
 ```
@@ -391,12 +462,17 @@ For codebases that call AI APIs — the four failure modes that ship silently:
 
 ---
 
-## What the standards mode covers (new additions)
+## What the standards mode enforces
 
-Beyond the language-specific rules (TypeScript, Python, Go), the always-on standards now enforce two additional architectural invariants:
+Always-on rules applied to every file the agent touches, without needing an invocation:
 
-- **Interface boundary rules** — routes do routing only, services accept plain domain types (never `Request`/`Response`), repositories hide ORM details from callers. Prevents framework coupling from spreading into business logic, which makes services untestable without spinning up HTTP.
-- **Database schema hygiene** — `NOT NULL`, `CHECK`, `UNIQUE`, and `REFERENCES` constraints enforced at DB level (not just in ORM hooks), one model per table, enum addition order (DB constraint first, then code). Application-layer checks are bypassed by migrations, scripts, and direct DB access.
+- **TypeScript** — strict/typed mode, no `any` without justification, explicit return types on exported functions, `isX`/`hasX`/`canX` boolean naming, `SCREAMING_SNAKE_CASE` constants
+- **Python** — type hints on all function signatures, `snake_case` variables, `PascalCase` classes, `SCREAMING_SNAKE_CASE` constants
+- **Go** — errors always checked and wrapped with `fmt.Errorf("context: %w", err)`, `context.Context` as first argument on all I/O functions
+- **Error handling** — catch → log with context → rethrow with context. No empty catch blocks. No untyped `catch (e)`.
+- **Config** — one central config file validates all env vars at startup with fast-fail. No `process.env.X` scattered through the codebase.
+- **Interface boundaries** — routes do routing only, services accept plain domain types (never `Request`/`Response`), repositories hide ORM details from callers
+- **Database schema** — `NOT NULL`, `CHECK`, `UNIQUE`, and `REFERENCES` constraints at DB level (not just ORM hooks), one model per table, enum addition order enforced (DB constraint first, then code)
 
 ---
 
